@@ -1,15 +1,65 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { parseInstruction, formatDocument, generateCitations, exportDocument } from './utils/api.js';
+import { formatDocument, generateCitations, exportDocument } from './utils/api.js';
+
+// ─── Options ────────────────────────────────────────────────────────────────
+
+const FONTS = ['Times New Roman', 'Calibri', 'Arial', 'Georgia', 'Garamond', 'Helvetica Neue'];
+const FONT_SIZES = ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt'];
+const SPACINGS = [
+  { label: 'Single (1.0)', value: '1.0' },
+  { label: '1.15', value: '1.15' },
+  { label: '1.5', value: '1.5' },
+  { label: 'Double (2.0)', value: '2.0' },
+];
+const ALIGNMENTS = [
+  { label: 'Justify', value: 'justified' },
+  { label: 'Left', value: 'left' },
+  { label: 'Center', value: 'center' },
+  { label: 'Right', value: 'right' },
+];
+const INDENTATIONS = [
+  { label: 'None', value: 'none' },
+  { label: 'First line 0.5"', value: '0.5 inch' },
+  { label: 'First line 1"', value: '1 inch' },
+  { label: 'Hanging 0.5"', value: 'hanging 0.5 inch' },
+];
+const REFERENCES = [
+  { label: 'APA 7th', value: 'APA' },
+  { label: 'MLA 9th', value: 'MLA' },
+  { label: 'Chicago', value: 'Chicago' },
+  { label: 'Harvard', value: 'Harvard' },
+  { label: 'IEEE', value: 'IEEE' },
+  { label: 'None', value: 'none' },
+];
+
+// ─── Defaults & Presets ─────────────────────────────────────────────────────
+
+const DEFAULT_SETTINGS = {
+  font: 'Times New Roman',
+  fontSize: '12pt',
+  spacing: '2.0',
+  alignment: 'justified',
+  indentation: '0.5 inch',
+  referencing: 'APA',
+};
 
 const PRESETS = [
-  { id: 'apa', name: 'APA Academic', desc: 'Double-spaced, serif, APA 7th', accent: '#C4956A',
-    instruction: 'Times New Roman, 12pt body, double spacing (2.0). Heading 1: bold, 14pt, flush left. Heading 2: bold italic, 12pt. Justified alignment. 1-inch margins. APA 7th edition referencing.' },
-  { id: 'mla', name: 'MLA Essay', desc: 'Double-spaced, Works Cited', accent: '#7A8B7A',
-    instruction: 'Times New Roman, 12pt body, double spacing (2.0). Heading 1: bold, 12pt, centered. Heading 2: bold, 12pt, flush left. Left alignment. 1-inch margins. MLA 9th edition referencing.' },
-  { id: 'report', name: 'Business Report', desc: 'Clean sans-serif, tight spacing', accent: '#5B7FA5',
-    instruction: 'Calibri, 11pt body, 1.15 line spacing. Heading 1: bold, 18pt, color #1B2A4A. Heading 2: bold, 13pt, color #2D4A6F. Justified alignment. 1-inch margins. No referencing.' },
-  { id: 'ieee', name: 'IEEE Conference', desc: '10pt, numbered refs', accent: '#8B6FA5',
-    instruction: 'Times New Roman, 10pt body, single spacing (1.0). Heading 1: bold, 10pt, small caps, centered. Heading 2: bold italic, 10pt, flush left. Justified alignment. 0.75-inch margins. IEEE numbered referencing.' },
+  {
+    id: 'apa', name: 'APA Academic', desc: 'Double-spaced · APA 7th', accent: '#C4956A',
+    settings: { font: 'Times New Roman', fontSize: '12pt', spacing: '2.0', alignment: 'justified', indentation: '0.5 inch', referencing: 'APA' },
+  },
+  {
+    id: 'mla', name: 'MLA Essay', desc: 'Double-spaced · Works Cited', accent: '#7A8B7A',
+    settings: { font: 'Times New Roman', fontSize: '12pt', spacing: '2.0', alignment: 'left', indentation: '0.5 inch', referencing: 'MLA' },
+  },
+  {
+    id: 'report', name: 'Business Report', desc: 'Sans-serif · 1.15 spacing', accent: '#5B7FA5',
+    settings: { font: 'Calibri', fontSize: '11pt', spacing: '1.15', alignment: 'justified', indentation: 'none', referencing: 'none' },
+  },
+  {
+    id: 'ieee', name: 'IEEE Conference', desc: '10pt · Numbered refs', accent: '#8B6FA5',
+    settings: { font: 'Times New Roman', fontSize: '10pt', spacing: '1.0', alignment: 'justified', indentation: 'none', referencing: 'IEEE' },
+  },
 ];
 
 const SAMPLE = `Introduction to Machine Learning
@@ -38,27 +88,82 @@ Bishop, C. M. (2006). Pattern Recognition and Machine Learning. Springer.
 Hastie, T., Tibshirani, R., & Friedman, J. (2009). The Elements of Statistical Learning. Springer.
 Murphy, K. P. (2012). Machine Learning: A Probabilistic Perspective. MIT Press.`;
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 const wc = (t) => t ? t.trim().split(/\s+/).filter(Boolean).length : 0;
 const sz = (s) => parseInt(String(s).replace(/[^0-9.]/g, '')) || 12;
 
+const buildRules = (s) => {
+  const bodyPt = sz(s.fontSize);
+  return {
+    font: s.font,
+    body_size: s.fontSize,
+    line_spacing: s.spacing,
+    paragraph_spacing_after: '8pt',
+    heading_1: { size: `${bodyPt + 2}pt`, bold: true, italic: false, color: '#000000', alignment: 'left', caps: false },
+    heading_2: { size: `${bodyPt}pt`, bold: true, italic: true, color: '#333333' },
+    heading_3: { size: `${bodyPt}pt`, bold: false, italic: true, color: '#555555' },
+    alignment: s.alignment,
+    referencing: s.referencing,
+    margins: '1 inch',
+    first_line_indent: s.indentation,
+  };
+};
+
+// ─── Reusable setting field ──────────────────────────────────────────────────
+
+const selStyle = {
+  width: '100%', background: '#0C0E11', border: '1px solid #2A2E37',
+  borderRadius: 5, color: '#C8C5BF', fontSize: 11, padding: '5px 8px',
+  cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23585653'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center',
+  paddingRight: 24,
+};
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <div style={{ fontSize: 9, color: '#585653', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+// ─── App ────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [doc, setDoc] = useState('');
-  const [instruction, setInstruction] = useState('');
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [activePreset, setActivePreset] = useState('apa');
   const [status, setStatus] = useState('idle');
   const [result, setResult] = useState(null);
   const [rules, setRules] = useState(null);
   const [error, setError] = useState(null);
-  const [usedFallback, setUsedFallback] = useState(false);
   const [tab, setTab] = useState('paste');
   const [view, setView] = useState('preview');
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
   const abortRef = useRef(null);
 
-  const busy = ['parsing', 'structuring', 'citations', 'exporting'].includes(status);
+  const busy = ['structuring', 'citations', 'exporting'].includes(status);
   const words = useMemo(() => wc(doc), [doc]);
 
-  const cancel = useCallback(() => { abortRef.current?.abort(); abortRef.current = null; setStatus('idle'); }, []);
+  const setSetting = useCallback((key, val) => {
+    setSettings(s => ({ ...s, [key]: val }));
+    setActivePreset(null);
+  }, []);
+
+  const applyPreset = useCallback((preset) => {
+    setSettings(preset.settings);
+    setActivePreset(preset.id);
+  }, []);
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStatus('idle');
+  }, []);
 
   const readFile = useCallback((file) => {
     if (!file) return;
@@ -68,16 +173,13 @@ export default function App() {
   }, []);
 
   const handleFormat = useCallback(async () => {
-    if (!doc.trim() || !instruction.trim()) { setError('Provide both a document and instructions.'); return; }
-    setError(null); setResult(null); setRules(null); setUsedFallback(false);
+    if (!doc.trim()) { setError('Paste or upload a document first.'); return; }
+    setError(null); setResult(null); setRules(null);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
-      setStatus('parsing');
-      const parsed = await parseInstruction(instruction, ctrl.signal);
-      const r = parsed.rules;
+      const r = buildRules(settings);
       setRules(r);
-      if (parsed.used_fallback) setUsedFallback(true);
 
       setStatus('structuring');
       const formatted = await formatDocument(doc, r, ctrl.signal);
@@ -93,9 +195,10 @@ export default function App() {
       setStatus('done');
     } catch (err) {
       if (err.name === 'AbortError') { setStatus('idle'); return; }
-      setError(err.message); setStatus('error');
+      setError(err.message);
+      setStatus('error');
     } finally { abortRef.current = null; }
-  }, [doc, instruction]);
+  }, [doc, settings]);
 
   const handleExport = useCallback(async (fmt) => {
     if (!result || !rules) return;
@@ -106,10 +209,23 @@ export default function App() {
     } catch (err) { setError(err.message); setStatus('error'); }
   }, [result, rules]);
 
-  const clear = useCallback(() => { cancel(); setDoc(''); setInstruction(''); setResult(null); setRules(null); setError(null); setUsedFallback(false); setView('preview'); }, [cancel]);
+  const clear = useCallback(() => {
+    cancel();
+    setDoc('');
+    setSettings(DEFAULT_SETTINGS);
+    setActivePreset('apa');
+    setResult(null);
+    setRules(null);
+    setError(null);
+    setView('preview');
+  }, [cancel]);
 
   const renderPreview = () => {
-    if (!result) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: '#999' }}>Formatted document appears here</div>;
+    if (!result) return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: '#999' }}>
+        Formatted document appears here
+      </div>
+    );
     const font = rules?.font || 'Times New Roman';
     const bSz = sz(rules?.body_size);
     const lh = parseFloat(rules?.line_spacing || '1.5') + 0.25;
@@ -138,11 +254,14 @@ export default function App() {
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:wght@400;600;700&family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400&display=swap');
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
         *{box-sizing:border-box;margin:0;padding:0}
+        select:focus{outline:none;border-color:#C4956A !important}
         textarea:focus{outline:none;border-color:#C4956A !important}
         ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+        select option{background:#0C0E11;color:#C8C5BF}
       `}</style>
 
-      <header style={{ padding: '12px 24px', borderBottom: '1px solid #23272E', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Header */}
+      <header style={{ padding: '12px 24px', borderBottom: '1px solid #23272E', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <h1 style={{ fontSize: 16, fontFamily: "'Newsreader',serif" }}>DocForge<span style={{ color: '#C4956A', fontWeight: 400, marginLeft: 3 }}>AI</span></h1>
         <span style={{ fontSize: 11, color: status === 'error' ? '#D4665A' : '#585653' }}>
           {busy ? status + '…' : status === 'done' ? 'Complete' : status === 'error' ? 'Error' : 'Ready'}
@@ -150,24 +269,38 @@ export default function App() {
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', flex: 1, overflow: 'hidden' }}>
+
+        {/* ── Left panel ─────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', borderRight: '1px solid #23272E', overflow: 'hidden' }}>
-          <div style={{ padding: '10px 18px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+
+          {/* Tab bar */}
+          <div style={{ padding: '10px 18px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: 4 }}>
               {['paste', 'upload'].map(k => (
-                <button key={k} onClick={() => setTab(k)} style={{ padding: '4px 12px', borderRadius: 5, border: 'none', cursor: 'pointer', background: tab === k ? '#1A1D23' : 'transparent', color: tab === k ? '#E8E6E1' : '#585653', fontSize: 11, fontWeight: 600 }}>{k === 'paste' ? 'Paste' : 'Upload'}</button>
+                <button key={k} onClick={() => setTab(k)} style={{ padding: '4px 12px', borderRadius: 5, border: 'none', cursor: 'pointer', background: tab === k ? '#1A1D23' : 'transparent', color: tab === k ? '#E8E6E1' : '#585653', fontSize: 11, fontWeight: 600 }}>
+                  {k === 'paste' ? 'Paste' : 'Upload'}
+                </button>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {words > 0 && <span style={{ fontSize: 10, color: '#585653', fontFamily: "'Fira Code',monospace" }}>{words} words</span>}
-              <button onClick={() => { setDoc(SAMPLE); setInstruction(PRESETS[0].instruction); }} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 10, cursor: 'pointer' }}>Sample</button>
+              <button onClick={() => { setDoc(SAMPLE); applyPreset(PRESETS[0]); }}
+                style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 10, cursor: 'pointer' }}>
+                Sample
+              </button>
             </div>
           </div>
 
-          <div style={{ flex: 1, padding: '8px 18px', display: 'flex' }}>
+          {/* Document input */}
+          <div style={{ flex: 1, padding: '8px 18px', display: 'flex', minHeight: 0 }}>
             {tab === 'paste' ? (
-              <textarea value={doc} onChange={e => setDoc(e.target.value)} placeholder="Paste document here…" style={{ flex: 1, background: '#13161B', border: '1px solid #23272E', borderRadius: 8, padding: 14, color: '#E8E6E1', fontSize: 12, lineHeight: 1.7, resize: 'none', fontFamily: "'Fira Code',monospace" }} />
+              <textarea value={doc} onChange={e => setDoc(e.target.value)} placeholder="Paste document here…"
+                style={{ flex: 1, background: '#13161B', border: '1px solid #23272E', borderRadius: 8, padding: 14, color: '#E8E6E1', fontSize: 12, lineHeight: 1.7, resize: 'none', fontFamily: "'Fira Code',monospace" }} />
             ) : (
-              <div onClick={() => fileRef.current?.click()} onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={e => { e.preventDefault(); setDragOver(false); readFile(e.dataTransfer?.files?.[0]); }}
+              <div onClick={() => fileRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); readFile(e.dataTransfer?.files?.[0]); }}
                 style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#13161B', border: `2px dashed ${dragOver ? '#C4956A' : '#23272E'}`, borderRadius: 8, cursor: 'pointer' }}>
                 <input ref={fileRef} type="file" accept=".txt,.md" onChange={e => readFile(e.target.files?.[0])} style={{ display: 'none' }} />
                 <p style={{ color: '#585653', fontSize: 13 }}>Drop file or click to browse</p>
@@ -175,30 +308,99 @@ export default function App() {
             )}
           </div>
 
-          <div style={{ padding: '0 18px 14px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 8 }}>
-              {PRESETS.map(p => (
-                <button key={p.id} onClick={() => setInstruction(p.instruction)} style={{ padding: '7px 10px', borderRadius: 6, border: `1.5px solid ${instruction === p.instruction ? p.accent : '#23272E'}`, background: instruction === p.instruction ? p.accent + '0D' : '#13161B', cursor: 'pointer', textAlign: 'left' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: instruction === p.instruction ? p.accent : '#E8E6E1' }}>{p.name}</div>
-                  <div style={{ fontSize: 9, color: '#585653' }}>{p.desc}</div>
-                </button>
-              ))}
+          {/* ── Formatting Settings ──────────────────────────────────────── */}
+          <div style={{ flexShrink: 0, padding: '0 18px', borderTop: '1px solid #23272E' }}>
+
+            {/* Settings header + presets */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, paddingBottom: 8 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: '#585653', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                Formatting Settings
+              </span>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {PRESETS.map(p => (
+                  <button key={p.id} onClick={() => applyPreset(p)}
+                    title={p.desc}
+                    style={{
+                      padding: '2px 7px', borderRadius: 4,
+                      border: `1px solid ${activePreset === p.id ? p.accent : '#2A2E37'}`,
+                      background: activePreset === p.id ? p.accent + '18' : 'transparent',
+                      color: activePreset === p.id ? p.accent : '#585653',
+                      fontSize: 9, cursor: 'pointer', fontWeight: 600,
+                    }}>
+                    {p.name.split(' ')[0]}
+                  </button>
+                ))}
+              </div>
             </div>
-            <textarea value={instruction} onChange={e => setInstruction(e.target.value)} placeholder="Custom instructions…" rows={2} style={{ width: '100%', background: '#13161B', border: '1px solid #23272E', borderRadius: 6, padding: '8px 12px', color: '#E8E6E1', fontSize: 12, lineHeight: 1.5, resize: 'none' }} />
-            {error && <div style={{ marginTop: 6, padding: '6px 10px', background: '#D4665A12', border: '1px solid #D4665A30', borderRadius: 6, color: '#D4665A', fontSize: 11 }}>{error}</div>}
-            {usedFallback && !error && <div style={{ marginTop: 6, padding: '6px 10px', background: '#C4956A12', border: '1px solid #C4956A40', borderRadius: 6, color: '#C4956A', fontSize: 11 }}>Could not parse your instructions — default formatting rules were applied.</div>}
-            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-              <button onClick={busy ? cancel : handleFormat} style={{ flex: 1, padding: '11px', borderRadius: 8, border: 'none', cursor: 'pointer', background: busy ? '#1A1D23' : 'linear-gradient(135deg,#C4956A,#A07A55)', color: busy ? '#A8A5A0' : '#fff', fontSize: 13, fontWeight: 700 }}>{busy ? 'Cancel' : 'Format Document'}</button>
-              <button onClick={clear} style={{ padding: '11px 14px', borderRadius: 8, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 12, cursor: 'pointer' }}>Clear</button>
+
+            {/* Row 1: Font · Size · Spacing */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 110px', gap: 8, marginBottom: 8 }}>
+              <Field label="Font">
+                <select value={settings.font} onChange={e => setSetting('font', e.target.value)} style={selStyle}>
+                  {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </Field>
+              <Field label="Size">
+                <select value={settings.fontSize} onChange={e => setSetting('fontSize', e.target.value)} style={selStyle}>
+                  {FONT_SIZES.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </Field>
+              <Field label="Line Spacing">
+                <select value={settings.spacing} onChange={e => setSetting('spacing', e.target.value)} style={selStyle}>
+                  {SPACINGS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            {/* Row 2: Alignment · Indentation · References */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+              <Field label="Alignment">
+                <select value={settings.alignment} onChange={e => setSetting('alignment', e.target.value)} style={selStyle}>
+                  {ALIGNMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Indentation">
+                <select value={settings.indentation} onChange={e => setSetting('indentation', e.target.value)} style={selStyle}>
+                  {INDENTATIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field label="References">
+                <select value={settings.referencing} onChange={e => setSetting('referencing', e.target.value)} style={selStyle}>
+                  {REFERENCES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            {/* Banners */}
+            {error && (
+              <div style={{ marginBottom: 8, padding: '6px 10px', background: '#D4665A12', border: '1px solid #D4665A30', borderRadius: 6, color: '#D4665A', fontSize: 11 }}>
+                {error}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+              <button onClick={busy ? cancel : handleFormat}
+                style={{ flex: 1, padding: '11px', borderRadius: 8, border: 'none', cursor: 'pointer', background: busy ? '#1A1D23' : 'linear-gradient(135deg,#C4956A,#A07A55)', color: busy ? '#A8A5A0' : '#fff', fontSize: 13, fontWeight: 700 }}>
+                {busy ? 'Cancel' : 'Format Document'}
+              </button>
+              <button onClick={clear}
+                style={{ padding: '11px 14px', borderRadius: 8, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 12, cursor: 'pointer' }}>
+                Clear
+              </button>
             </div>
           </div>
         </div>
 
+        {/* ── Right panel ────────────────────────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#13161B' }}>
-          <div style={{ padding: '8px 18px', borderBottom: '1px solid #23272E', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '8px 18px', borderBottom: '1px solid #23272E', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: 2 }}>
               {['preview', 'json', 'raw'].map(k => (
-                <button key={k} onClick={() => setView(k)} style={{ padding: '3px 11px', borderRadius: 4, border: 'none', cursor: 'pointer', background: view === k ? '#1A1D23' : 'transparent', color: view === k ? '#E8E6E1' : '#585653', fontSize: 10, fontWeight: 600 }}>{k}</button>
+                <button key={k} onClick={() => setView(k)}
+                  style={{ padding: '3px 11px', borderRadius: 4, border: 'none', cursor: 'pointer', background: view === k ? '#1A1D23' : 'transparent', color: view === k ? '#E8E6E1' : '#585653', fontSize: 10, fontWeight: 600 }}>
+                  {k}
+                </button>
               ))}
             </div>
             {result && (
@@ -211,9 +413,13 @@ export default function App() {
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px', display: 'flex', justifyContent: 'center' }}>
             {view === 'json' && rules ? (
-              <pre style={{ width: '100%', maxWidth: 560, background: '#0C0E11', borderRadius: 8, padding: 20, border: '1px solid #23272E', color: '#C4956A', fontSize: 12, fontFamily: "'Fira Code',monospace", lineHeight: 1.8, overflow: 'auto' }}>{JSON.stringify(rules, null, 2)}</pre>
+              <pre style={{ width: '100%', maxWidth: 560, background: '#0C0E11', borderRadius: 8, padding: 20, border: '1px solid #23272E', color: '#C4956A', fontSize: 12, fontFamily: "'Fira Code',monospace", lineHeight: 1.8, overflow: 'auto' }}>
+                {JSON.stringify(rules, null, 2)}
+              </pre>
             ) : view === 'raw' && result ? (
-              <pre style={{ width: '100%', background: '#0C0E11', borderRadius: 8, padding: 20, border: '1px solid #23272E', color: '#A8A5A0', fontSize: 11, fontFamily: "'Fira Code',monospace", lineHeight: 1.8, whiteSpace: 'pre-wrap', overflow: 'auto' }}>{result}</pre>
+              <pre style={{ width: '100%', background: '#0C0E11', borderRadius: 8, padding: 20, border: '1px solid #23272E', color: '#A8A5A0', fontSize: 11, fontFamily: "'Fira Code',monospace", lineHeight: 1.8, whiteSpace: 'pre-wrap', overflow: 'auto' }}>
+                {result}
+              </pre>
             ) : (
               <div style={{ width: '100%', maxWidth: 640, background: '#FAF8F5', borderRadius: 3, padding: '44px 48px', minHeight: 400, boxShadow: '0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.03)' }}>
                 {renderPreview()}
@@ -221,6 +427,7 @@ export default function App() {
             )}
           </div>
         </div>
+
       </div>
     </div>
   );
