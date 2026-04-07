@@ -48,6 +48,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [rules, setRules] = useState(null);
   const [error, setError] = useState(null);
+  const [usedFallback, setUsedFallback] = useState(false);
   const [tab, setTab] = useState('paste');
   const [view, setView] = useState('preview');
   const [dragOver, setDragOver] = useState(false);
@@ -68,7 +69,7 @@ export default function App() {
 
   const handleFormat = useCallback(async () => {
     if (!doc.trim() || !instruction.trim()) { setError('Provide both a document and instructions.'); return; }
-    setError(null); setResult(null); setRules(null);
+    setError(null); setResult(null); setRules(null); setUsedFallback(false);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
@@ -76,6 +77,7 @@ export default function App() {
       const parsed = await parseInstruction(instruction, ctrl.signal);
       const r = parsed.rules;
       setRules(r);
+      if (parsed.used_fallback) setUsedFallback(true);
 
       setStatus('structuring');
       const formatted = await formatDocument(doc, r, ctrl.signal);
@@ -104,7 +106,7 @@ export default function App() {
     } catch (err) { setError(err.message); setStatus('error'); }
   }, [result, rules]);
 
-  const clear = useCallback(() => { cancel(); setDoc(''); setInstruction(''); setResult(null); setRules(null); setError(null); setView('preview'); }, [cancel]);
+  const clear = useCallback(() => { cancel(); setDoc(''); setInstruction(''); setResult(null); setRules(null); setError(null); setUsedFallback(false); setView('preview'); }, [cancel]);
 
   const renderPreview = () => {
     if (!result) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: '#999' }}>Formatted document appears here</div>;
@@ -114,6 +116,7 @@ export default function App() {
     const align = (rules?.alignment || 'justified').replace('justified', 'justify');
     const h1 = rules?.heading_1 || {};
     const h2 = rules?.heading_2 || {};
+    const h3 = rules?.heading_3 || {};
 
     return result.split('\n').filter(l => l.trim()).map((raw, i) => {
       const m = raw.trim().match(/^\[([A-Z0-9]+)\]\s*(.*)/s);
@@ -121,7 +124,8 @@ export default function App() {
       const base = { fontFamily: font, fontSize: bSz, lineHeight: lh, color: '#2b2b2b' };
       if (tag === 'TITLE') return <h1 key={i} style={{ ...base, fontSize: sz(h1.size) + 6, fontWeight: 700, textAlign: 'center', marginBottom: 24, borderBottom: '1.5px solid #ddd', paddingBottom: 16 }}>{text}</h1>;
       if (tag === 'H1') return <h2 key={i} style={{ ...base, fontSize: sz(h1.size), fontWeight: 700, color: h1.color || '#1a1a1a', marginTop: 28, marginBottom: 10 }}>{text}</h2>;
-      if (tag === 'H2') return <h3 key={i} style={{ ...base, fontSize: sz(h2.size), fontWeight: 600, color: h2.color || '#333', marginTop: 20, marginBottom: 8 }}>{text}</h3>;
+      if (tag === 'H2') return <h3 key={i} style={{ ...base, fontSize: sz(h2.size), fontWeight: h2.bold ? 600 : 400, fontStyle: h2.italic ? 'italic' : 'normal', color: h2.color || '#333', marginTop: 20, marginBottom: 8 }}>{text}</h3>;
+      if (tag === 'H3') return <h4 key={i} style={{ ...base, fontSize: sz(h3.size) || bSz, fontWeight: h3.bold ? 500 : 400, fontStyle: h3.italic ? 'italic' : 'normal', color: h3.color || '#555', marginTop: 14, marginBottom: 6 }}>{text}</h4>;
       if (tag === 'REFERENCES') return <h2 key={i} style={{ ...base, fontSize: sz(h1.size), fontWeight: 700, marginTop: 32, paddingTop: 20, borderTop: '1.5px solid #ddd' }}>{text || 'References'}</h2>;
       if (tag === 'REF') return <p key={i} style={{ ...base, paddingLeft: 36, textIndent: -36, marginBottom: 5 }}>{text}</p>;
       return <p key={i} style={{ ...base, textAlign: align, marginBottom: 10 }}>{text}</p>;
@@ -182,6 +186,7 @@ export default function App() {
             </div>
             <textarea value={instruction} onChange={e => setInstruction(e.target.value)} placeholder="Custom instructions…" rows={2} style={{ width: '100%', background: '#13161B', border: '1px solid #23272E', borderRadius: 6, padding: '8px 12px', color: '#E8E6E1', fontSize: 12, lineHeight: 1.5, resize: 'none' }} />
             {error && <div style={{ marginTop: 6, padding: '6px 10px', background: '#D4665A12', border: '1px solid #D4665A30', borderRadius: 6, color: '#D4665A', fontSize: 11 }}>{error}</div>}
+            {usedFallback && !error && <div style={{ marginTop: 6, padding: '6px 10px', background: '#C4956A12', border: '1px solid #C4956A40', borderRadius: 6, color: '#C4956A', fontSize: 11 }}>Could not parse your instructions — default formatting rules were applied.</div>}
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
               <button onClick={busy ? cancel : handleFormat} style={{ flex: 1, padding: '11px', borderRadius: 8, border: 'none', cursor: 'pointer', background: busy ? '#1A1D23' : 'linear-gradient(135deg,#C4956A,#A07A55)', color: busy ? '#A8A5A0' : '#fff', fontSize: 13, fontWeight: 700 }}>{busy ? 'Cancel' : 'Format Document'}</button>
               <button onClick={clear} style={{ padding: '11px 14px', borderRadius: 8, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 12, cursor: 'pointer' }}>Clear</button>

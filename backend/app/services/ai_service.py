@@ -2,12 +2,15 @@
 AI Service v2 — Refined Claude API integration with precision prompts.
 """
 
-import os
 import json
+import logging
+import re
 import anthropic
+from app.config import config
 
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+logger = logging.getLogger(__name__)
+
+client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
 
 PROMPT_PARSE = """You are a document formatting engine. Convert the user's natural language formatting instruction into a JSON object. Return ONLY raw JSON — no markdown fences, no prose.
 
@@ -59,26 +62,39 @@ FALLBACK = {
     "first_line_indent": "0.5 inch",
 }
 
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
-def _call(system: str, user: str) -> str:
-    msg = client.messages.create(
-        model=MODEL, max_tokens=4096, system=system,
+
+def _extract_json(raw: str) -> dict:
+    """Extract JSON from raw text, stripping markdown fences if present."""
+    match = _JSON_FENCE_RE.search(raw)
+    text = match.group(1) if match else raw
+    return json.loads(text.strip())
+
+
+async def _call(system: str, user: str) -> str:
+    msg = await client.messages.create(
+        model=config.ANTHROPIC_MODEL,
+        max_tokens=4096,
+        system=system,
         messages=[{"role": "user", "content": user}],
     )
     return msg.content[0].text.strip()
 
 
-async def parse_formatting_instructions(instruction: str) -> dict:
-    raw = _call(PROMPT_PARSE, instruction)
+async def parse_formatting_instructions(instruction: str) -> tuple[dict, bool]:
+    """Returns (rules_dict, used_fallback)."""
+    raw = await _call(PROMPT_PARSE, instruction)
     try:
-        return json.loads(raw.replace("```json", "").replace("```", "").strip())
-    except json.JSONDecodeError:
-        return FALLBACK.copy()
+        return _extract_json(raw), False
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Claude returned non-JSON for instruction parse; using fallback defaults")
+        return FALLBACK.copy(), True
 
 
 async def detect_document_structure(document: str) -> str:
-    return _call(PROMPT_STRUCTURE, document)
+    return await _call(PROMPT_STRUCTURE, document)
 
 
 async def format_citations(document: str, style: str) -> str:
-    return _call(_cite_prompt(style), document)
+    return await _call(_cite_prompt(style), document)

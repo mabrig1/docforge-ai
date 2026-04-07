@@ -1,10 +1,12 @@
 """Export Router v2 — .docx and .pdf generation."""
 
+import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from app.models.schemas import ExportRequest
 from app.services.export_service import create_docx, create_pdf
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 MIME = {
@@ -27,4 +29,5 @@ async def export_document(req: ExportRequest):
             headers={"Content-Disposition": f"attachment; filename=formatted.{req.format}"},
         )
     except Exception as e:
-        raise HTTPException(500, detail=str(e))
+        logger.exception("Error in export_document")
+        raise HTTPException(500, detail="Failed to export document.")
