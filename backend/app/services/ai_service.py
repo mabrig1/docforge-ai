@@ -72,19 +72,31 @@ def _extract_json(raw: str) -> dict:
     return json.loads(text.strip())
 
 
-async def _call(system: str, user: str) -> str:
+async def _call(system: str, user: str, max_tokens: int = 1024) -> str:
     msg = await client.messages.create(
         model=config.ANTHROPIC_MODEL,
-        max_tokens=4096,
+        max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
     return msg.content[0].text.strip()
 
 
+def _doc_max_tokens(document: str) -> int:
+    """Return an output token budget sized to the document.
+
+    Output is roughly the same length as the input (tags add ~5 %).
+    We estimate ~0.75 words per token, add 20 % headroom, and cap at
+    16 000 — the safe ceiling for claude-sonnet-4.
+    """
+    word_count = len(document.split())
+    estimated_output = int(word_count / 0.75 * 1.20)
+    return max(1024, min(estimated_output, 16_000))
+
+
 async def parse_formatting_instructions(instruction: str) -> tuple[dict, bool]:
-    """Returns (rules_dict, used_fallback)."""
-    raw = await _call(PROMPT_PARSE, instruction)
+    """Returns (rules_dict, used_fallback). JSON output is small — 512 tokens is plenty."""
+    raw = await _call(PROMPT_PARSE, instruction, max_tokens=512)
     try:
         return _extract_json(raw), False
     except (json.JSONDecodeError, ValueError):
@@ -93,8 +105,8 @@ async def parse_formatting_instructions(instruction: str) -> tuple[dict, bool]:
 
 
 async def detect_document_structure(document: str) -> str:
-    return await _call(PROMPT_STRUCTURE, document)
+    return await _call(PROMPT_STRUCTURE, document, max_tokens=_doc_max_tokens(document))
 
 
 async def format_citations(document: str, style: str) -> str:
-    return await _call(_cite_prompt(style), document)
+    return await _call(_cite_prompt(style), document, max_tokens=_doc_max_tokens(document))

@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, call
 
 
 @pytest.fixture
@@ -95,3 +95,60 @@ async def test_format_citations_preserves_tags(mock_client):
 
     assert "[H1]" in result
     assert "[REF]" in result
+
+
+# ---------------------------------------------------------------------------
+# _doc_max_tokens — token budget scaling
+# ---------------------------------------------------------------------------
+
+def test_doc_max_tokens_short_document():
+    from app.services.ai_service import _doc_max_tokens
+    # 100-word doc → estimated output well below 16 000
+    result = _doc_max_tokens("word " * 100)
+    assert 1024 <= result <= 16_000
+
+
+def test_doc_max_tokens_minimum_enforced():
+    from app.services.ai_service import _doc_max_tokens
+    # Very short document should still get at least 1024
+    assert _doc_max_tokens("hi") == 1024
+
+
+def test_doc_max_tokens_cap_enforced():
+    from app.services.ai_service import _doc_max_tokens
+    # 50 000-word document should be capped at 16 000
+    assert _doc_max_tokens("word " * 50_000) == 16_000
+
+
+def test_doc_max_tokens_full_project_range():
+    from app.services.ai_service import _doc_max_tokens
+    # 10 000-word project (typical full project) should be > 4096
+    result = _doc_max_tokens("word " * 10_000)
+    assert result > 4096, f"Full project token budget too low: {result}"
+
+
+@pytest.mark.asyncio
+async def test_parse_instruction_uses_small_token_budget(mock_client):
+    """parse_formatting_instructions should request only 512 tokens — not the document budget."""
+    mock, cb = mock_client
+    cb.text = '{"font": "Arial"}'
+
+    from app.services.ai_service import parse_formatting_instructions
+    await parse_formatting_instructions("Arial style")
+
+    _, kwargs = mock.messages.create.call_args
+    assert kwargs["max_tokens"] == 512
+
+
+@pytest.mark.asyncio
+async def test_detect_structure_uses_scaled_token_budget(mock_client):
+    """detect_document_structure should use a budget scaled to the document, not 4096."""
+    mock, cb = mock_client
+    cb.text = "[TITLE] Doc\n[PARAGRAPH] Body."
+
+    from app.services.ai_service import detect_document_structure
+    long_doc = "word " * 5_000  # ~5 000-word document
+    await detect_document_structure(long_doc)
+
+    _, kwargs = mock.messages.create.call_args
+    assert kwargs["max_tokens"] > 4096, "Budget should exceed old 4096 cap for a 5 000-word doc"
