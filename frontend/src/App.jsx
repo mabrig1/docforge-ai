@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { formatDocument, generateCitations, exportDocument } from './utils/api.js';
+import { formatDocument, generateCitations, exportDocument, extractText } from './utils/api.js';
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -143,6 +143,8 @@ export default function App() {
   const [tab, setTab] = useState('paste');
   const [view, setView] = useState('preview');
   const [dragOver, setDragOver] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);   // { name, size }
+  const [extracting, setExtracting] = useState(false);
   const fileRef = useRef(null);
   const abortRef = useRef(null);
 
@@ -165,11 +167,28 @@ export default function App() {
     setStatus('idle');
   }, []);
 
-  const readFile = useCallback((file) => {
+  const readFile = useCallback(async (file) => {
     if (!file) return;
-    const r = new FileReader();
-    r.onload = (e) => setDoc(e.target.result);
-    r.readAsText(file);
+    setUploadedFile({ name: file.name, size: file.size });
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'txt' || ext === 'md') {
+      const reader = new FileReader();
+      reader.onload = (e) => setDoc(e.target.result);
+      reader.readAsText(file);
+    } else {
+      // .docx or .pdf — send to backend for extraction
+      setExtracting(true);
+      setError(null);
+      try {
+        const res = await extractText(file);
+        setDoc(res.text);
+      } catch (err) {
+        setError(err.message);
+        setUploadedFile(null);
+      } finally {
+        setExtracting(false);
+      }
+    }
   }, []);
 
   const handleFormat = useCallback(async () => {
@@ -218,6 +237,9 @@ export default function App() {
     setRules(null);
     setError(null);
     setView('preview');
+    setUploadedFile(null);
+    setExtracting(false);
+    if (fileRef.current) fileRef.current.value = '';
   }, [cancel]);
 
   const renderPreview = () => {
@@ -253,6 +275,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Newsreader:wght@400;600;700&family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400&display=swap');
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+        @keyframes spin{to{transform:rotate(360deg)}}
         *{box-sizing:border-box;margin:0;padding:0}
         select:focus{outline:none;border-color:#C4956A !important}
         textarea:focus{outline:none;border-color:#C4956A !important}
@@ -297,13 +320,35 @@ export default function App() {
               <textarea value={doc} onChange={e => setDoc(e.target.value)} placeholder="Paste document here…"
                 style={{ flex: 1, background: '#13161B', border: '1px solid #23272E', borderRadius: 8, padding: 14, color: '#E8E6E1', fontSize: 12, lineHeight: 1.7, resize: 'none', fontFamily: "'Fira Code',monospace" }} />
             ) : (
-              <div onClick={() => fileRef.current?.click()}
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={e => { e.preventDefault(); setDragOver(false); readFile(e.dataTransfer?.files?.[0]); }}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#13161B', border: `2px dashed ${dragOver ? '#C4956A' : '#23272E'}`, borderRadius: 8, cursor: 'pointer' }}>
-                <input ref={fileRef} type="file" accept=".txt,.md" onChange={e => readFile(e.target.files?.[0])} style={{ display: 'none' }} />
-                <p style={{ color: '#585653', fontSize: 13 }}>Drop file or click to browse</p>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Drop zone */}
+                <div
+                  onClick={() => !extracting && fileRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => { e.preventDefault(); setDragOver(false); readFile(e.dataTransfer?.files?.[0]); }}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#13161B', border: `2px dashed ${dragOver ? '#C4956A' : uploadedFile ? '#3A4A3A' : '#23272E'}`, borderRadius: 8, cursor: extracting ? 'default' : 'pointer', transition: 'border-color 0.15s' }}>
+                  <input ref={fileRef} type="file" accept=".txt,.md,.docx,.pdf" onChange={e => readFile(e.target.files?.[0])} style={{ display: 'none' }} />
+                  {extracting ? (
+                    <>
+                      <div style={{ width: 20, height: 20, border: '2px solid #C4956A', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                      <span style={{ color: '#C4956A', fontSize: 12 }}>Extracting text…</span>
+                    </>
+                  ) : uploadedFile ? (
+                    <>
+                      <div style={{ fontSize: 22 }}>📄</div>
+                      <span style={{ color: '#A8C8A8', fontSize: 12, fontWeight: 600 }}>{uploadedFile.name}</span>
+                      <span style={{ color: '#585653', fontSize: 10 }}>{(uploadedFile.size / 1024).toFixed(1)} KB · {words} words extracted</span>
+                      <span style={{ color: '#585653', fontSize: 10 }}>Click to replace</span>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 22 }}>⬆</div>
+                      <span style={{ color: '#585653', fontSize: 13 }}>Drop file or click to browse</span>
+                      <span style={{ color: '#3A3E47', fontSize: 10 }}>.txt · .md · .docx · .pdf</span>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -404,10 +449,33 @@ export default function App() {
               ))}
             </div>
             {result && (
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => handleExport('docx')} style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 10, cursor: 'pointer' }}>.docx</button>
-                <button onClick={() => handleExport('pdf')} style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 10, cursor: 'pointer' }}>.pdf</button>
-                <button onClick={() => navigator.clipboard?.writeText(result)} style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 10, cursor: 'pointer' }}>Copy</button>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <span style={{ fontSize: 9, color: '#3A3E47', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginRight: 2 }}>Download</span>
+                <button onClick={() => handleExport('docx')} title="Download as Word document"
+                  style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #2A2E37', background: '#1A1D23', color: '#A8C8D8', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  .docx
+                </button>
+                <button onClick={() => handleExport('pdf')} title="Download as PDF"
+                  style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #2A2E37', background: '#1A1D23', color: '#D4A8A8', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  .pdf
+                </button>
+                <button
+                  onClick={() => {
+                    const blob = new Blob([result], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = 'formatted.txt'; a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  title="Download as plain text"
+                  style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #2A2E37', background: '#1A1D23', color: '#A8C8A8', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
+                  .txt
+                </button>
+                <div style={{ width: 1, height: 14, background: '#23272E', margin: '0 2px' }} />
+                <button onClick={() => navigator.clipboard?.writeText(result)} title="Copy to clipboard"
+                  style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 10, cursor: 'pointer' }}>
+                  Copy
+                </button>
               </div>
             )}
           </div>

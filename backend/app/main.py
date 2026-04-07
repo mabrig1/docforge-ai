@@ -8,7 +8,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from app.config import config
-from app.routers import formatting, export, citations
+from app.routers import formatting, export, citations, upload
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ async def global_error_handler(request: Request, exc: Exception):
 app.include_router(formatting.router, prefix="/api", tags=["Formatting"])
 app.include_router(export.router, prefix="/api", tags=["Export"])
 app.include_router(citations.router, prefix="/api", tags=["Citations"])
+app.include_router(upload.router, prefix="/api", tags=["Upload"])
 
 
 @app.get("/")
