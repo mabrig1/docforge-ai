@@ -5,7 +5,9 @@
 
 import { authHeader, clearToken } from './auth.js';
 
-const BASE = '/api';
+// In production, VITE_API_BASE points to the Render backend URL.
+// In dev, falls back to '' so the Vite proxy (/api → localhost:8000) works.
+const BASE = (import.meta.env.VITE_API_BASE || '') + '/api';
 
 async function request(path, body, signal) {
   const res = await fetch(`${BASE}${path}`, {
