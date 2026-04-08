@@ -20,3 +20,10 @@ Thumbs.db
 *.tmp
 *.docx
 *.pdf
+
+# Database (runtime data)
+*.db
+*.sqlite
+
+# Malformed pip artifacts
+backend/=*

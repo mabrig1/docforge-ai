@@ -37,21 +37,25 @@ class FormattingRules(BaseModel):
     first_line_indent: Optional[str] = "0.5 inch"
 
 
+MAX_DOCUMENT_CHARS = 100_000
+MAX_INSTRUCTION_CHARS = 2_000
+
+
 class ParseInstructionRequest(BaseModel):
-    instruction: str = Field(..., min_length=3)
+    instruction: str = Field(..., min_length=3, max_length=MAX_INSTRUCTION_CHARS)
 
 
 class FormatDocumentRequest(BaseModel):
-    document: str = Field(..., min_length=10)
+    document: str = Field(..., min_length=10, max_length=MAX_DOCUMENT_CHARS)
     rules: FormattingRules
 
 
 class GenerateCitationsRequest(BaseModel):
-    document: str = Field(..., min_length=10)
+    document: str = Field(..., min_length=10, max_length=MAX_DOCUMENT_CHARS)
     style: ReferenceStyle = ReferenceStyle.APA
 
 
 class ExportRequest(BaseModel):
-    document: str = Field(..., min_length=10)
+    document: str = Field(..., min_length=10, max_length=MAX_DOCUMENT_CHARS)
     rules: FormattingRules
     format: str = Field(default="docx", pattern="^(docx|pdf)$")
