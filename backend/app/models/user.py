@@ -13,6 +13,7 @@ class User(Base):
     name = Column(String, nullable=False)
     password_hash = Column(String, nullable=False)
     role = Column(String, default="user")   # "admin" | "user"
+    plan = Column(String, default="free")   # "free" | "assignment" | "term_paper" | "project"
     is_active = Column(Boolean, default=True)
     usage_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)

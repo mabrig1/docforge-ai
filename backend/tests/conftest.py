@@ -13,9 +13,12 @@ class FakeUser:
     id: int = 1
     email: str = "test@test.com"
     name: str = "Test User"
-    role: str = "user"
+    role: str = "admin"   # admin bypasses quota so tests never hit 402
+    plan: str = "project"
     is_active: bool = True
     usage_count: int = 0
+    credits_remaining: int = 15
+    usage_limit: int = 15
     created_at: datetime = None
 
     def __post_init__(self):

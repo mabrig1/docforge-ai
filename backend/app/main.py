@@ -3,6 +3,7 @@
 import logging
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Request
+from sqlalchemy import inspect, text
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -40,9 +41,21 @@ def _seed_admin() -> None:
         db.close()
 
 
+def _migrate() -> None:
+    """Add new columns to existing tables without alembic."""
+    insp = inspect(engine)
+    existing = {c["name"] for c in insp.get_columns("users")}
+    with engine.connect() as conn:
+        if "plan" not in existing:
+            conn.execute(text("ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'"))
+            conn.commit()
+            logger.info("Migration: added 'plan' column to users table")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _migrate()
     _seed_admin()
     yield
 

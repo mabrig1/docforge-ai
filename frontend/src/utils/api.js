@@ -65,6 +65,16 @@ export async function toggleUser(userId) {
   return res.json();
 }
 
+export async function setPlan(userId, plan) {
+  const res = await fetch(`${BASE}/auth/users/${userId}/plan`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify({ plan }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.detail || 'Failed to set plan.'); }
+  return res.json();
+}
+
 // ── Document endpoints ───────────────────────────────────────────────────────
 
 export async function parseInstruction(instruction, signal) {

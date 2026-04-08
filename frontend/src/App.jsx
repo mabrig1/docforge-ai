@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { formatDocument, generateCitations, exportDocument, extractText, getCurrentUser, getUsers, toggleUser } from './utils/api.js';
+import { formatDocument, generateCitations, exportDocument, extractText, getCurrentUser, getUsers, toggleUser, setPlan } from './utils/api.js';
 import { getToken, clearToken } from './utils/auth.js';
 import LoginPage from './LoginPage.jsx';
 
@@ -165,7 +165,14 @@ export default function App() {
   const handleToggleUser = useCallback(async (id) => {
     try {
       const updated = await toggleUser(id);
-      setAdminUsers(us => us.map(u => u.id === id ? { ...u, is_active: updated.is_active } : u));
+      setAdminUsers(us => us.map(u => u.id === id ? { ...u, ...updated } : u));
+    } catch (e) { setAdminError(e.message); }
+  }, []);
+
+  const handleSetPlan = useCallback(async (id, plan) => {
+    try {
+      const updated = await setPlan(id, plan);
+      setAdminUsers(us => us.map(u => u.id === id ? { ...u, ...updated } : u));
     } catch (e) { setAdminError(e.message); }
   }, []);
 
@@ -341,9 +348,13 @@ export default function App() {
           </span>
           <div style={{ width: 1, height: 14, background: '#23272E' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {isAdmin && (
+            {isAdmin ? (
               <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: '#C4956A18', border: '1px solid #C4956A40', color: '#C4956A', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Admin
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, color: user.credits_remaining === 0 ? '#D4665A' : '#7A9B7A', background: user.credits_remaining === 0 ? '#D4665A12' : '#7A9B7A12', border: `1px solid ${user.credits_remaining === 0 ? '#D4665A30' : '#7A9B7A30'}`, padding: '2px 7px', borderRadius: 4 }}>
+                {user.plan === 'free' ? 'No plan' : `${user.credits_remaining ?? 0} credit${user.credits_remaining !== 1 ? 's' : ''} left`}
               </span>
             )}
             <span style={{ fontSize: 11, color: '#A8A5A0' }}>{user.name}</span>
@@ -594,9 +605,24 @@ export default function App() {
                         </div>
                         {/* Stats */}
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 10, color: '#585653' }}>{u.usage_count} jobs</div>
+                          <div style={{ fontSize: 10, color: u.credits_remaining === 0 && u.role !== 'admin' ? '#D4665A' : '#585653' }}>
+                            {u.role === 'admin' ? '∞ credits' : `${u.usage_count}/${u.usage_limit ?? '?'} used`}
+                          </div>
                           <div style={{ fontSize: 9, color: '#3A3E47', marginTop: 1 }}>{new Date(u.created_at).toLocaleDateString()}</div>
                         </div>
+                        {/* Plan selector */}
+                        {u.role !== 'admin' && (
+                          <select
+                            value={u.plan || 'free'}
+                            onChange={e => handleSetPlan(u.id, e.target.value)}
+                            style={{ flexShrink: 0, padding: '3px 6px', borderRadius: 5, border: '1px solid #2A2E37', background: '#0C0E11', color: '#C4956A', fontSize: 10, cursor: 'pointer' }}
+                          >
+                            <option value="free">Free</option>
+                            <option value="assignment">Assignment ×5</option>
+                            <option value="term_paper">Term Paper ×3</option>
+                            <option value="project">Project ×15</option>
+                          </select>
+                        )}
                         {/* Toggle */}
                         {u.role !== 'admin' && (
                           <button onClick={() => handleToggleUser(u.id)}

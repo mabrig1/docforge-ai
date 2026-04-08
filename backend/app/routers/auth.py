@@ -5,9 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.dependencies import get_current_user, require_admin
+from app.dependencies import get_current_user, require_admin, PLAN_QUOTAS
 from app.models.user import User
 from app.services.auth_service import create_access_token, hash_password, verify_password
+
+VALID_PLANS = set(PLAN_QUOTAS.keys())
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,13 +31,18 @@ class LoginRequest(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _user_dict(user: User) -> dict:
+    plan = user.plan or "free"
+    limit = PLAN_QUOTAS.get(plan, 0) if user.role != "admin" else None
     return {
         "id": user.id,
         "email": user.email,
         "name": user.name,
         "role": user.role,
+        "plan": plan,
         "is_active": user.is_active,
         "usage_count": user.usage_count,
+        "usage_limit": limit,          # None = unlimited (admin)
+        "credits_remaining": None if limit is None else max(0, limit - user.usage_count),
         "created_at": user.created_at.isoformat(),
     }
 
@@ -102,4 +109,26 @@ def toggle_user(
     user.is_active = not user.is_active
     db.commit()
     logger.info("Admin toggled user %s → active=%s", user.email, user.is_active)
+    return _user_dict(user)
+
+
+class SetPlanRequest(BaseModel):
+    plan: str = Field(..., pattern="^(free|assignment|term_paper|project)$")
+
+
+@router.patch("/users/{user_id}/plan")
+def set_plan(
+    user_id: int,
+    req: SetPlanRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Assign a plan and reset usage counter (admin only)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, detail="User not found.")
+    user.plan = req.plan
+    user.usage_count = 0      # fresh credits on new plan
+    db.commit()
+    logger.info("Admin set plan for %s → %s (usage reset)", user.email, req.plan)
     return _user_dict(user)
