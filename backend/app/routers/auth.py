@@ -1,8 +1,10 @@
 """Auth Router — register, login, profile, admin user management."""
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user, require_admin, PLAN_QUOTAS
@@ -13,6 +15,7 @@ VALID_PLANS = set(PLAN_QUOTAS.keys())
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Request schemas ──────────────────────────────────────────────────────────
@@ -50,7 +53,8 @@ def _user_dict(user: User) -> dict:
 # ── Public endpoints ─────────────────────────────────────────────────────────
 
 @router.post("/register")
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+@_limiter.limit("10/minute")
+def register(request: Request, req: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == req.email.lower()).first():
         raise HTTPException(400, detail="An account with this email already exists.")
     user = User(
@@ -68,7 +72,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+@_limiter.limit("5/minute")
+def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.email.lower()).first()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(401, detail="Invalid email or password.")

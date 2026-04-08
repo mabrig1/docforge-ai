@@ -16,7 +16,7 @@ async def parse_instruction(req: ParseInstructionRequest):
     try:
         rules, used_fallback = await parse_formatting_instructions(req.instruction)
         return {"status": "success", "rules": rules, "used_fallback": used_fallback}
-    except Exception as e:
+    except Exception:
         logger.exception("Error in parse_instruction")
         raise HTTPException(500, detail="Failed to parse formatting instructions.")
 
@@ -30,6 +30,6 @@ async def format_document(
     try:
         structured = await detect_document_structure(req.document)
         return {"status": "success", "structured_document": structured, "rules": req.rules.model_dump()}
-    except Exception as e:
+    except Exception:
         logger.exception("Error in format_document")
         raise HTTPException(500, detail="Failed to format document.")

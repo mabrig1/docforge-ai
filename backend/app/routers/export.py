@@ -28,6 +28,6 @@ async def export_document(req: ExportRequest):
             media_type=MIME.get(req.format, MIME["docx"]),
             headers={"Content-Disposition": f"attachment; filename=formatted.{req.format}"},
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Error in export_document")
         raise HTTPException(500, detail="Failed to export document.")

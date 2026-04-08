@@ -9,6 +9,10 @@ router = APIRouter()
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# Magic bytes for binary formats — guards against spoofed extensions
+_DOCX_MAGIC = b"PK\x03\x04"   # ZIP container (all .docx files start with this)
+_PDF_MAGIC  = b"%PDF"
+
 
 @router.post("/extract-text")
 async def extract_text(file: UploadFile = File(...)):
@@ -20,8 +24,12 @@ async def extract_text(file: UploadFile = File(...)):
         name = (file.filename or "").lower()
 
         if name.endswith(".docx"):
+            if not content.startswith(_DOCX_MAGIC):
+                raise HTTPException(400, detail="File is not a valid .docx document.")
             text = _from_docx(content)
         elif name.endswith(".pdf"):
+            if not content.startswith(_PDF_MAGIC):
+                raise HTTPException(400, detail="File is not a valid PDF document.")
             text = _from_pdf(content)
         elif name.endswith((".txt", ".md")):
             text = content.decode("utf-8", errors="replace")

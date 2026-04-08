@@ -50,13 +50,25 @@ def track_usage(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Check quota then increment usage_count. Admin role = unlimited."""
+    """Atomically check quota and increment. Admin role = unlimited."""
     if current_user.role == "admin":
         return current_user
 
     limit = PLAN_QUOTAS.get(current_user.plan or "free", 0)
-    if current_user.usage_count >= limit:
-        plan_label = (current_user.plan or "free").replace("_", " ").title()
+    plan_label = (current_user.plan or "free").replace("_", " ").title()
+
+    # Atomic conditional increment: only increments if still within quota.
+    # Avoids the check-then-act race condition present in a read/check/write pattern.
+    rows_updated = (
+        db.query(User)
+        .filter(User.id == current_user.id, User.usage_count < limit)
+        .update({"usage_count": User.usage_count + 1})
+    )
+    db.commit()
+
+    if rows_updated == 0:
+        # Either already at limit, or (rare) concurrent request beat us — reject either way
+        db.refresh(current_user)
         raise HTTPException(
             402,
             detail=(
@@ -65,12 +77,9 @@ def track_usage(
             ),
         )
 
-    # Atomic increment so concurrent requests don't race
-    db.query(User).filter(User.id == current_user.id).update(
-        {"usage_count": User.usage_count + 1}
-    )
-    db.commit()
     db.refresh(current_user)
-    logger.info("Usage tracked: user=%s plan=%s count=%d/%d",
-                current_user.email, current_user.plan, current_user.usage_count, limit)
+    logger.info(
+        "Usage tracked: user=%s plan=%s count=%d/%d",
+        current_user.email, current_user.plan, current_user.usage_count, limit,
+    )
     return current_user
