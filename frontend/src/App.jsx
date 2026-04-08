@@ -1,5 +1,7 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
-import { formatDocument, generateCitations, exportDocument, extractText } from './utils/api.js';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { formatDocument, generateCitations, exportDocument, extractText, getCurrentUser, getUsers, toggleUser } from './utils/api.js';
+import { getToken, clearToken } from './utils/auth.js';
+import LoginPage from './LoginPage.jsx';
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -133,6 +135,41 @@ function Field({ label, children }) {
 // ─── App ────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // ── Auth state ────────────────────────────────────────────────────────────
+  const [user, setUser] = useState(null);          // null = loading
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (!getToken()) { setAuthReady(true); return; }
+    getCurrentUser().then(u => { setUser(u); setAuthReady(true); });
+  }, []);
+
+  const handleAuth = useCallback((u) => setUser(u), []);
+  const handleLogout = useCallback(() => {
+    clearToken();
+    setUser(null);
+  }, []);
+
+  // ── Admin panel state ─────────────────────────────────────────────────────
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState('');
+
+  const loadAdminUsers = useCallback(async () => {
+    setAdminLoading(true); setAdminError('');
+    try { setAdminUsers(await getUsers()); }
+    catch (e) { setAdminError(e.message); }
+    finally { setAdminLoading(false); }
+  }, []);
+
+  const handleToggleUser = useCallback(async (id) => {
+    try {
+      const updated = await toggleUser(id);
+      setAdminUsers(us => us.map(u => u.id === id ? { ...u, is_active: updated.is_active } : u));
+    } catch (e) { setAdminError(e.message); }
+  }, []);
+
+  // ── Document state ────────────────────────────────────────────────────────
   const [doc, setDoc] = useState('');
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [activePreset, setActivePreset] = useState('apa');
@@ -143,7 +180,7 @@ export default function App() {
   const [tab, setTab] = useState('paste');
   const [view, setView] = useState('preview');
   const [dragOver, setDragOver] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState(null);   // { name, size }
+  const [uploadedFile, setUploadedFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const fileRef = useRef(null);
   const abortRef = useRef(null);
@@ -270,6 +307,18 @@ export default function App() {
     });
   };
 
+  // ── Auth gate ─────────────────────────────────────────────────────────────
+  if (!authReady) return (
+    <div style={{ minHeight: '100vh', background: '#0C0E11', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 24, height: 24, border: '2px solid #C4956A', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+      <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
+    </div>
+  );
+
+  if (!user) return <LoginPage onAuth={handleAuth} />;
+
+  const isAdmin = user.role === 'admin';
+
   return (
     <div style={{ minHeight: '100vh', background: '#0C0E11', color: '#E8E6E1', fontFamily: "'Outfit',system-ui,sans-serif", display: 'flex', flexDirection: 'column' }}>
       <style>{`
@@ -284,11 +333,26 @@ export default function App() {
       `}</style>
 
       {/* Header */}
-      <header style={{ padding: '12px 24px', borderBottom: '1px solid #23272E', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+      <header style={{ padding: '10px 24px', borderBottom: '1px solid #23272E', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <h1 style={{ fontSize: 16, fontFamily: "'Newsreader',serif" }}>DocForge<span style={{ color: '#C4956A', fontWeight: 400, marginLeft: 3 }}>AI</span></h1>
-        <span style={{ fontSize: 11, color: status === 'error' ? '#D4665A' : '#585653' }}>
-          {busy ? status + '…' : status === 'done' ? 'Complete' : status === 'error' ? 'Error' : 'Ready'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 11, color: status === 'error' ? '#D4665A' : '#585653' }}>
+            {busy ? status + '…' : status === 'done' ? 'Complete' : status === 'error' ? 'Error' : 'Ready'}
+          </span>
+          <div style={{ width: 1, height: 14, background: '#23272E' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isAdmin && (
+              <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: '#C4956A18', border: '1px solid #C4956A40', color: '#C4956A', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Admin
+              </span>
+            )}
+            <span style={{ fontSize: 11, color: '#A8A5A0' }}>{user.name}</span>
+            <button onClick={handleLogout}
+              style={{ padding: '3px 9px', borderRadius: 4, border: '1px solid #23272E', background: 'transparent', color: '#585653', fontSize: 10, cursor: 'pointer' }}>
+              Sign out
+            </button>
+          </div>
+        </div>
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', flex: 1, overflow: 'hidden' }}>
@@ -441,9 +505,10 @@ export default function App() {
         <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#13161B' }}>
           <div style={{ padding: '8px 18px', borderBottom: '1px solid #23272E', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: 2 }}>
-              {['preview', 'json', 'raw'].map(k => (
-                <button key={k} onClick={() => setView(k)}
-                  style={{ padding: '3px 11px', borderRadius: 4, border: 'none', cursor: 'pointer', background: view === k ? '#1A1D23' : 'transparent', color: view === k ? '#E8E6E1' : '#585653', fontSize: 10, fontWeight: 600 }}>
+              {['preview', 'json', 'raw', ...(isAdmin ? ['users'] : [])].map(k => (
+                <button key={k}
+                  onClick={() => { setView(k); if (k === 'users' && adminUsers.length === 0) loadAdminUsers(); }}
+                  style={{ padding: '3px 11px', borderRadius: 4, border: 'none', cursor: 'pointer', background: view === k ? '#1A1D23' : 'transparent', color: view === k ? (k === 'users' ? '#C4956A' : '#E8E6E1') : '#585653', fontSize: 10, fontWeight: 600 }}>
                   {k}
                 </button>
               ))}
@@ -480,7 +545,74 @@ export default function App() {
             )}
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px', display: 'flex', justifyContent: 'center' }}>
-            {view === 'json' && rules ? (
+            {view === 'users' && isAdmin ? (
+              <div style={{ width: '100%', maxWidth: 680 }}>
+                {/* Admin panel header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#E8E6E1' }}>User Management</div>
+                    <div style={{ fontSize: 11, color: '#585653', marginTop: 2 }}>{adminUsers.length} registered account{adminUsers.length !== 1 ? 's' : ''}</div>
+                  </div>
+                  <button onClick={loadAdminUsers}
+                    style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #2A2E37', background: 'transparent', color: '#585653', fontSize: 11, cursor: 'pointer' }}>
+                    Refresh
+                  </button>
+                </div>
+
+                {adminError && (
+                  <div style={{ marginBottom: 12, padding: '8px 12px', background: '#D4665A12', border: '1px solid #D4665A30', borderRadius: 6, color: '#D4665A', fontSize: 11 }}>
+                    {adminError}
+                  </div>
+                )}
+
+                {adminLoading ? (
+                  <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}>
+                    <div style={{ width: 20, height: 20, border: '2px solid #C4956A', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {adminUsers.map(u => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#0C0E11', border: `1px solid ${u.is_active ? '#23272E' : '#D4665A20'}`, borderRadius: 8 }}>
+                        {/* Avatar */}
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: u.role === 'admin' ? '#C4956A20' : '#1A1D23', border: `1px solid ${u.role === 'admin' ? '#C4956A40' : '#23272E'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: u.role === 'admin' ? '#C4956A' : '#585653' }}>
+                            {u.name[0].toUpperCase()}
+                          </span>
+                        </div>
+                        {/* Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#E8E6E1' }}>{u.name}</span>
+                            {u.role === 'admin' && (
+                              <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#C4956A18', border: '1px solid #C4956A40', color: '#C4956A', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Admin</span>
+                            )}
+                            {!u.is_active && (
+                              <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#D4665A12', border: '1px solid #D4665A30', color: '#D4665A', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Disabled</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#585653', marginTop: 1 }}>{u.email}</div>
+                        </div>
+                        {/* Stats */}
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 10, color: '#585653' }}>{u.usage_count} jobs</div>
+                          <div style={{ fontSize: 9, color: '#3A3E47', marginTop: 1 }}>{new Date(u.created_at).toLocaleDateString()}</div>
+                        </div>
+                        {/* Toggle */}
+                        {u.role !== 'admin' && (
+                          <button onClick={() => handleToggleUser(u.id)}
+                            style={{ flexShrink: 0, padding: '4px 10px', borderRadius: 5, border: `1px solid ${u.is_active ? '#D4665A30' : '#3A8A3A30'}`, background: 'transparent', color: u.is_active ? '#D4665A' : '#7A8B7A', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
+                            {u.is_active ? 'Disable' : 'Enable'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {adminUsers.length === 0 && !adminLoading && (
+                      <div style={{ textAlign: 'center', color: '#585653', fontSize: 12, paddingTop: 40 }}>No users found.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : view === 'json' && rules ? (
               <pre style={{ width: '100%', maxWidth: 560, background: '#0C0E11', borderRadius: 8, padding: 20, border: '1px solid #23272E', color: '#C4956A', fontSize: 12, fontFamily: "'Fira Code',monospace", lineHeight: 1.8, overflow: 'auto' }}>
                 {JSON.stringify(rules, null, 2)}
               </pre>
