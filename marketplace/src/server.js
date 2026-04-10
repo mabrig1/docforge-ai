@@ -1,11 +1,12 @@
 require('dotenv').config();
 
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
-const connectDB = require('./config/db');
+const express    = require('express');
+const cors       = require('cors');
+const helmet     = require('helmet');
+const morgan     = require('morgan');
+const rateLimit  = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
+const connectDB  = require('./config/db');
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 const authRoutes = require('./routes/auth');
@@ -18,6 +19,8 @@ const app = express();
 // ── Security & logging middleware ──────────────────────────────────────────
 app.use(helmet());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+// cookie-parser is required for AUTH_MODE=cookie; harmless when unused
+app.use(cookieParser());
 
 // CORS — allow configured origins
 const allowedOrigins = (process.env.CORS_ORIGINS || '')

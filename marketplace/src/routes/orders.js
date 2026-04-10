@@ -23,7 +23,9 @@ const crypto = require('crypto');
 const express = require('express');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const User = require('../models/User');
 const { protect, requireAdmin } = require('../middleware/auth');
+const { sendPurchaseReceipt } = require('../services/email');
 
 const router = express.Router();
 
@@ -187,6 +189,22 @@ router.post('/webhook', express.json(), async (req, res, next) => {
 
     // Increment product sales counter (non-blocking)
     Product.findByIdAndUpdate(meta.productId, { $inc: { salesCount: 1 } }).exec();
+
+    // Send purchase receipt email (non-blocking — never delays the 200 response)
+    User.findById(meta.buyerId).then((buyer) => {
+      if (!buyer) return;
+      const frontendUrl = process.env.FRONTEND_URL || 'https://creators.fintigen.com';
+      sendPurchaseReceipt({
+        buyerName:     buyer.name,
+        buyerEmail:    buyer.email,
+        productTitle:  product.title,
+        productType:   product.productType,
+        amountCharged: tx.amount,
+        currency:      tx.currency,
+        txRef,
+        dashboardUrl:  `${frontendUrl}/dashboard`,
+      }).catch((e) => console.error('[webhook] receipt email failed:', e.message));
+    }).catch(() => {});
 
     res.sendStatus(200);
   } catch (err) {

@@ -1,0 +1,69 @@
+# render.yaml — Infrastructure-as-Code for Render.com
+#
+# Deploy with:  render blueprint apply
+# Or connect this repo in the Render dashboard → "Blueprint" tab.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: docforge-marketplace-api
+    runtime: node
+    region: oregon           # Change to: frankfurt | singapore | ohio
+    plan: starter            # starter (free tier) → upgrade to standard for production
+    branch: master           # or your main branch
+
+    rootDir: marketplace     # Express code lives here
+    buildCommand: npm install
+    startCommand: npm start
+
+    healthCheckPath: /health
+
+    # Auto-deploy on every push to the branch above
+    autoDeploy: true
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── MongoDB Atlas ────────────────────────────────────────────────────
+      - key: MONGODB_URI
+        sync: false          # Set manually in Render dashboard (never commit)
+
+      # ── JWT ──────────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        generateValue: true  # Render generates a random value once and persists it
+      - key: JWT_EXPIRES_IN
+        value: 7d
+
+      # ── Cloudflare R2 ────────────────────────────────────────────────────
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_URL_EXPIRES
+        value: "900"
+
+      # ── Flutterwave ──────────────────────────────────────────────────────
+      - key: FLW_SECRET_KEY
+        sync: false
+      - key: FLW_WEBHOOK_SECRET
+        sync: false
+
+      # ── CORS ─────────────────────────────────────────────────────────────
+      - key: CORS_ORIGINS
+        value: https://creators.fintigen.com
+
+      # ── Frontend URL (used in payment redirect_url) ───────────────────
+      - key: FRONTEND_URL
+        value: https://creators.fintigen.com
+
+      # ── Resend (email receipts) ───────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: receipts@creators.fintigen.com

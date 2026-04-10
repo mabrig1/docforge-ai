@@ -15,9 +15,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
   listProducts, createProduct, updateProduct,
-  getAllOrders, getUploadUrl,
+  getAllOrders,
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import R2FileUploader from '@/components/ui/R2FileUploader';
 
 const TABS = ['Products', 'Orders'];
 
@@ -259,9 +260,14 @@ function ProductFormModal({ initial, onClose, onSaved }) {
               onChange={handle} placeholder="https://…" required />
           </Field>
 
-          <Field label="R2 Secure File Key" hint="e.g. products/books/shadows-of-the-north.pdf">
-            <input className="input" name="secureFileKey" value={form.secureFileKey}
-              onChange={handle} required />
+          <Field label="Product File" hint="Upload PDF/EPUB for books, MP3/WAV for audio">
+            <R2FileUploader
+              productType={form.productType}
+              currentKey={form.secureFileKey}
+              onUploaded={(key) => setForm((f) => ({ ...f, secureFileKey: key }))}
+            />
+            {/* Hidden — keeps the value in form state for validation */}
+            <input type="hidden" name="secureFileKey" value={form.secureFileKey} required />
           </Field>
 
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Pricing</p>

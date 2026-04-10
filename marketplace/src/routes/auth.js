@@ -1,7 +1,9 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
-const { protect, signToken } = require('../middleware/auth');
+const { protect, signToken, setTokenCookie, clearTokenCookie } = require('../middleware/auth');
+
+const COOKIE_MODE = process.env.AUTH_MODE === 'cookie';
 
 const router = express.Router();
 
@@ -53,7 +55,8 @@ router.post('/signup', signupLimiter, async (req, res, next) => {
     const user = await User.create({ name, email, passwordHash: password });
     const token = signToken(user);
 
-    res.status(201).json({ token, user: user.toSafeObject() });
+    if (COOKIE_MODE) setTokenCookie(res, token);
+    res.status(201).json({ token: COOKIE_MODE ? undefined : token, user: user.toSafeObject() });
   } catch (err) {
     next(err);
   }
@@ -90,7 +93,8 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     const token = signToken(user);
-    res.json({ token, user: user.toSafeObject() });
+    if (COOKIE_MODE) setTokenCookie(res, token);
+    res.json({ token: COOKIE_MODE ? undefined : token, user: user.toSafeObject() });
   } catch (err) {
     next(err);
   }
@@ -99,6 +103,14 @@ router.post('/login', loginLimiter, async (req, res, next) => {
 // ── GET /api/auth/me ───────────────────────────────────────────────────────
 router.get('/me', protect, (req, res) => {
   res.json({ user: req.user.toSafeObject() });
+});
+
+// ── POST /api/auth/logout ──────────────────────────────────────────────────
+// In bearer mode: client just discards the token — nothing to do server-side.
+// In cookie mode: clear the httpOnly cookie.
+router.post('/logout', (req, res) => {
+  if (COOKIE_MODE) clearTokenCookie(res);
+  res.json({ message: 'Logged out.' });
 });
 
 module.exports = router;
