@@ -162,13 +162,24 @@ def test_auth_login_wrong_password():
 
 def test_auth_register_duplicate_email():
     from app.main import app
-    from app.database import Base, engine
+    from app.database import Base, engine, SessionLocal
+    from app.models.user import User
     Base.metadata.create_all(bind=engine)
-    with TestClient(app) as c:
-        payload = {"email": "dup_pytest@test.com", "name": "Dup", "password": "secure123"}
-        c.post("/api/auth/register", json=payload)
-        resp = c.post("/api/auth/register", json=payload)
-    assert resp.status_code == 400
+    # Clean up before and after so this test is idempotent across runs
+    with SessionLocal() as db:
+        db.query(User).filter(User.email == "dup_pytest@test.com").delete()
+        db.commit()
+    try:
+        with TestClient(app) as c:
+            payload = {"email": "dup_pytest@test.com", "name": "Dup", "password": "secure123"}
+            first = c.post("/api/auth/register", json=payload)
+            assert first.status_code == 200, f"First registration failed: {first.text}"
+            resp = c.post("/api/auth/register", json=payload)
+        assert resp.status_code == 400
+    finally:
+        with SessionLocal() as db:
+            db.query(User).filter(User.email == "dup_pytest@test.com").delete()
+            db.commit()
 
 
 def test_protected_route_requires_token():

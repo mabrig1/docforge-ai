@@ -20,6 +20,13 @@ from app.services.auth_service import hash_password
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+import os as _os
+if not _os.getenv("SECRET_KEY"):
+    logger.warning(
+        "SECRET_KEY is not set — a random key will be used and all JWT tokens will be "
+        "invalidated on every restart. Set SECRET_KEY in your .env for persistent sessions."
+    )
+
 
 def _seed_admin() -> None:
     """Create the admin account on first run if it doesn't exist."""

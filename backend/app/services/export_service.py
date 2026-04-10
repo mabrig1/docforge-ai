@@ -156,10 +156,13 @@ def create_pdf(structured_text: str, rules: dict) -> bytes:
 
 
 def _pdf_reportlab(structured_text: str, rules: dict) -> bytes:
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, PageBreak
+    except ImportError as exc:
+        raise RuntimeError("reportlab is not installed; PDF export is unavailable.") from exc
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=inch, bottomMargin=inch, leftMargin=inch, rightMargin=inch)
@@ -171,6 +174,7 @@ def _pdf_reportlab(structured_text: str, rules: dict) -> bytes:
     title = ParagraphStyle("T", parent=ss["Title"], fontName="Times-Bold", fontSize=bsz + 8, spaceAfter=24, alignment=1)
     h1s = ParagraphStyle("H1", parent=ss["Heading1"], fontName="Times-Bold", fontSize=_sz(rules.get("heading_1", {}).get("size", "16pt")), spaceBefore=18, spaceAfter=8)
     h2s = ParagraphStyle("H2", parent=ss["Heading2"], fontName="Times-Bold", fontSize=_sz(rules.get("heading_2", {}).get("size", "14pt")), spaceBefore=14, spaceAfter=6)
+    h3s = ParagraphStyle("H3", parent=ss["Heading3"], fontName="Times-BoldItalic", fontSize=_sz(rules.get("heading_3", {}).get("size", str(bsz) + "pt")), spaceBefore=10, spaceAfter=4)
     refs = ParagraphStyle("Ref", parent=body, leftIndent=36, firstLineIndent=-36, spaceAfter=4)
 
     story = []
@@ -185,6 +189,7 @@ def _pdf_reportlab(structured_text: str, rules: dict) -> bytes:
         if tag == "TITLE": story.append(Paragraph(txt, title))
         elif tag == "H1": story.append(Paragraph(txt, h1s))
         elif tag == "H2": story.append(Paragraph(txt, h2s))
+        elif tag == "H3": story.append(Paragraph(txt, h3s))
         elif tag == "REFERENCES": story += [PageBreak(), Paragraph(txt or "References", h1s)]
         elif tag == "REF": story.append(Paragraph(txt, refs))
         else: story.append(Paragraph(txt, body))
