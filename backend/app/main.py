@@ -50,6 +50,14 @@ def _migrate() -> None:
             conn.execute(text("ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'"))
             conn.commit()
             logger.info("Migration: added 'plan' column to users table")
+        if "is_active" not in existing:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1"))
+            conn.commit()
+            logger.info("Migration: added 'is_active' column to users table")
+        if "usage_count" not in existing:
+            conn.execute(text("ALTER TABLE users ADD COLUMN usage_count INTEGER DEFAULT 0"))
+            conn.commit()
+            logger.info("Migration: added 'usage_count' column to users table")
 
 
 @asynccontextmanager

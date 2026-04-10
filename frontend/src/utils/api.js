@@ -87,7 +87,7 @@ export async function parseInstruction(instruction, signal) {
 export async function extractText(file, signal) {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch('/api/extract-text', {
+  const res = await fetch(`${BASE}/extract-text`, {
     method: 'POST',
     headers: authHeader(),
     body: form,

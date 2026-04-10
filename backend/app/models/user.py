@@ -1,6 +1,6 @@
 """User ORM model."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from app.database import Base
 
@@ -16,4 +16,4 @@ class User(Base):
     plan = Column(String, default="free")   # "free" | "assignment" | "term_paper" | "project"
     is_active = Column(Boolean, default=True)
     usage_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
