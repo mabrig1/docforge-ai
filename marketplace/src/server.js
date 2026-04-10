@@ -53,11 +53,16 @@ app.use(
 );
 
 // Body parsers
-// NOTE: /api/orders/webhook needs raw body for Flutterwave signature verification,
-// so we mount express.json() AFTER that route (the route itself calls express.json()
-// inline via the middleware array).
+// Webhook routes need their raw body intact for HMAC signature verification,
+// so they receive no pre-parsed body here — each route handles parsing inline:
+//   Flutterwave: express.json()          (verif-hash header check, then parse)
+//   Paystack:    express.raw({ type })   (SHA-512 HMAC check, then JSON.parse)
+const WEBHOOK_PATHS = new Set([
+  '/api/orders/webhook/flutterwave',
+  '/api/orders/webhook/paystack',
+]);
 app.use((req, res, next) => {
-  if (req.path === '/api/orders/webhook') return next();
+  if (WEBHOOK_PATHS.has(req.path)) return next();
   express.json({ limit: '1mb' })(req, res, next);
 });
 

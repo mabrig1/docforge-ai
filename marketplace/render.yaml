@@ -54,6 +54,12 @@ services:
       - key: FLW_WEBHOOK_SECRET
         sync: false
 
+      # ── Paystack ─────────────────────────────────────────────────────────
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+
       # ── CORS ─────────────────────────────────────────────────────────────
       - key: CORS_ORIGINS
         value: https://creators.fintigen.com

@@ -1,16 +1,17 @@
 const mongoose = require('mongoose');
 
-/**
- * Supported currencies — mirrors what Flutterwave returns in the webhook.
- */
 const CURRENCIES = ['NGN', 'USD', 'GBP', 'EUR'];
+const PROVIDERS  = ['flutterwave', 'paystack'];
 
 /**
- * An Order is created ONLY after Flutterwave fires a successful payment
- * webhook (status === "successful" && charge_response_code === "00").
+ * An Order is created ONLY after a verified payment webhook fires.
  *
  * It is the single source of truth for "has this user purchased this product?"
  * and the gateway to generating a pre-signed download URL.
+ *
+ * Both Flutterwave and Paystack orders share this schema.
+ * Provider-specific reference fields use `sparse: true` so the unique index
+ * only applies to documents where the field is actually set.
  */
 const orderSchema = new mongoose.Schema(
   {
@@ -28,19 +29,44 @@ const orderSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ── Payment details (sourced from Flutterwave webhook payload) ──────────
+    // ── Payment provider ────────────────────────────────────────────────────
+    provider: {
+      type: String,
+      enum: PROVIDERS,
+      required: true,
+      default: 'flutterwave',
+    },
+
+    // ── Flutterwave fields (set when provider === 'flutterwave') ────────────
+    // sparse: true — unique constraint only applies to non-null values
     flutterwaveTxRef: {
       type: String,
-      required: true,
-      unique: true,   // Idempotency: prevents duplicate orders for the same tx
+      unique: true,
+      sparse: true,
       trim: true,
     },
     flutterwaveTransactionId: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       trim: true,
     },
+
+    // ── Paystack fields (set when provider === 'paystack') ──────────────────
+    paystackReference: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+    paystackTransactionId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+
+    // ── Shared payment details ──────────────────────────────────────────────
     amountCharged: {
       type: Number,
       required: true,
@@ -59,8 +85,6 @@ const orderSchema = new mongoose.Schema(
     },
 
     // ── Status ──────────────────────────────────────────────────────────────
-    // "completed" is set immediately on webhook receipt; reserved for future
-    // refund/dispute workflows.
     status: {
       type: String,
       enum: ['completed', 'refunded', 'disputed'],
@@ -73,7 +97,6 @@ const orderSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // Timestamp of the most recent download link generation
     lastDownloadAt: {
       type: Date,
       default: null,

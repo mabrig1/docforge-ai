@@ -115,10 +115,22 @@ export async function getUploadUrl(objectKey, contentType) {
 // ── Orders ─────────────────────────────────────────────────────────────────
 /**
  * Starts a Flutterwave checkout session.
- * Returns { paymentLink, txRef }.
+ * Returns { paymentLink, txRef, provider: 'flutterwave' }.
  */
-export async function initiateOrder(productId, currency = 'NGN') {
-  return request('/api/orders/initiate', {
+export async function initiateFlutterwaveOrder(productId, currency = 'NGN') {
+  return request('/api/orders/initiate/flutterwave', {
+    method: 'POST',
+    body: { productId, currency },
+  });
+}
+
+/**
+ * Starts a Paystack checkout session.
+ * Returns { paymentLink, reference, provider: 'paystack' }.
+ * Supported currencies: NGN, USD, GBP (not EUR).
+ */
+export async function initiatePaystackOrder(productId, currency = 'NGN') {
+  return request('/api/orders/initiate/paystack', {
     method: 'POST',
     body: { productId, currency },
   });
