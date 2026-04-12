@@ -1,5 +1,6 @@
-const express = require('express');
-const Product = require('../models/Product');
+const express  = require('express');
+const mongoose = require('mongoose');
+const Product  = require('../models/Product');
 const { protect, requireAdmin } = require('../middleware/auth');
 const { generateUploadPresignedUrl } = require('../services/r2');
 
@@ -13,12 +14,31 @@ const ALLOWED_MIME_TYPES = {
   'audio/x-wav': 'wav',
 };
 
+const VALID_PRODUCT_TYPES = new Set(['book', 'audio']);
+
+/**
+ * Validates an R2 object key to prevent path traversal.
+ * Allows: alphanumeric, hyphens, underscores, dots, forward slashes.
+ * Rejects: ".." sequences, null bytes, or any other special character.
+ */
+function isSafeObjectKey(key) {
+  if (typeof key !== 'string' || key.length === 0 || key.length > 1024) return false;
+  if (/\.\./.test(key)) return false;          // path traversal
+  if (/\0/.test(key)) return false;            // null bytes
+  return /^[\w.\-/]+$/.test(key);             // allowlist: word chars, dot, hyphen, slash
+}
+
 // ── GET /api/products ─────────────────────────────────────────────────────
 // Public: list published products (with optional ?type=book|audio filter)
 router.get('/', async (req, res, next) => {
   try {
     const filter = { isPublished: true };
-    if (req.query.type) filter.productType = req.query.type;
+    if (req.query.type) {
+      if (!VALID_PRODUCT_TYPES.has(req.query.type)) {
+        return res.status(400).json({ error: 'Invalid type. Must be book or audio.' });
+      }
+      filter.productType = req.query.type;
+    }
 
     const products = await Product.find(filter)
       .select('-secureFileKey')   // never leak the file key
@@ -75,6 +95,10 @@ router.post('/', protect, requireAdmin, async (req, res, next) => {
 // Admin: update product fields
 router.patch('/:id', protect, requireAdmin, async (req, res, next) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid product ID.' });
+    }
+
     const UPDATABLE = [
       'title', 'description', 'coverImageUrl', 'pricing',
       'isPublished', 'creator', 'trackList', 'fileSizeBytes', 'secureFileKey',
@@ -107,6 +131,9 @@ router.post('/upload-url', protect, requireAdmin, async (req, res, next) => {
     }
     if (!ALLOWED_MIME_TYPES[contentType]) {
       return res.status(400).json({ error: 'Unsupported file type.' });
+    }
+    if (!isSafeObjectKey(objectKey)) {
+      return res.status(400).json({ error: 'Invalid objectKey.' });
     }
 
     const uploadUrl = await generateUploadPresignedUrl(objectKey, contentType);

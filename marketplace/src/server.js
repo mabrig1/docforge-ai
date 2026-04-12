@@ -1,12 +1,13 @@
 require('dotenv').config();
 
-const express    = require('express');
-const cors       = require('cors');
-const helmet     = require('helmet');
-const morgan     = require('morgan');
-const rateLimit  = require('express-rate-limit');
-const cookieParser = require('cookie-parser');
-const connectDB  = require('./config/db');
+const express        = require('express');
+const cors           = require('cors');
+const helmet         = require('helmet');
+const morgan         = require('morgan');
+const rateLimit      = require('express-rate-limit');
+const cookieParser   = require('cookie-parser');
+const mongoSanitize  = require('express-mongo-sanitize');
+const connectDB      = require('./config/db');
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 const authRoutes     = require('./routes/auth');
@@ -16,6 +17,10 @@ const downloadRoutes = require('./routes/download');
 const adminRoutes    = require('./routes/admin');
 
 const app = express();
+
+// Trust the first proxy hop (Render's load balancer) so express-rate-limit
+// sees the real client IP from X-Forwarded-For, not the proxy's address.
+app.set('trust proxy', 1);
 
 // ── Security & logging middleware ──────────────────────────────────────────
 app.use(helmet());
@@ -41,6 +46,10 @@ app.use(
     credentials: true,
   })
 );
+
+// Strip MongoDB operator keys ($gt, $where, etc.) from req.body, req.params,
+// and req.query to prevent NoSQL injection attacks.
+app.use(mongoSanitize());
 
 // Global rate limiter — 100 requests per 15 min per IP
 app.use(

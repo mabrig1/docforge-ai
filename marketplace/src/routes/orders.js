@@ -16,15 +16,36 @@
  *  5. Callback page polls GET /api/orders/mine until the order appears.
  */
 
-const crypto  = require('crypto');
-const express = require('express');
-const Order   = require('../models/Order');
-const Product = require('../models/Product');
-const User    = require('../models/User');
+const crypto    = require('crypto');
+const express   = require('express');
+const mongoose  = require('mongoose');
+const Order     = require('../models/Order');
+const Product   = require('../models/Product');
+const User      = require('../models/User');
 const { protect, requireAdmin } = require('../middleware/auth');
 const { sendPurchaseReceipt }   = require('../services/email');
 
 const router = express.Router();
+
+/**
+ * Constant-time string comparison to prevent timing-based signature forgery.
+ * Returns false if lengths differ (avoids timingSafeEqual length-mismatch throw).
+ */
+function timingSafeCompare(a, b) {
+  try {
+    const bufA = Buffer.from(String(a));
+    const bufB = Buffer.from(String(b));
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
+/** Returns true only when s is a valid 24-hex-char MongoDB ObjectId. */
+function isValidObjectId(s) {
+  return typeof s === 'string' && mongoose.Types.ObjectId.isValid(s);
+}
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -108,6 +129,7 @@ router.post('/initiate/flutterwave', protect, async (req, res, next) => {
   try {
     const { productId, currency = 'NGN' } = req.body;
     if (!productId) return res.status(400).json({ error: 'productId is required.' });
+    if (!isValidObjectId(productId)) return res.status(400).json({ error: 'Invalid productId.' });
 
     const { product, amount } = await validatePurchase(productId, currency, req.user._id);
 
@@ -151,9 +173,9 @@ router.post('/initiate/flutterwave', protect, async (req, res, next) => {
 // Raw body is passed through by server.js — we parse it inline here.
 router.post('/webhook/flutterwave', express.json(), async (req, res, next) => {
   try {
-    // 1 — signature check
+    // 1 — constant-time signature check (prevents timing attacks)
     const hash = req.headers['verif-hash'];
-    if (!hash || hash !== process.env.FLW_WEBHOOK_SECRET) {
+    if (!hash || !timingSafeCompare(hash, process.env.FLW_WEBHOOK_SECRET || '')) {
       return res.status(401).json({ error: 'Invalid webhook signature.' });
     }
 
@@ -171,6 +193,11 @@ router.post('/webhook/flutterwave', express.json(), async (req, res, next) => {
     const { data: tx } = await verifyRes.json();
 
     if (!tx || tx.status !== 'successful' || tx.charge_response_code !== '00') {
+      return res.sendStatus(200);
+    }
+
+    if (!isValidObjectId(meta?.productId) || !isValidObjectId(meta?.buyerId)) {
+      console.warn(`[flutterwave webhook] Invalid ObjectId in meta txRef=${txRef}`);
       return res.sendStatus(200);
     }
 
@@ -220,6 +247,7 @@ router.post('/initiate/paystack', protect, async (req, res, next) => {
   try {
     const { productId, currency = 'NGN' } = req.body;
     if (!productId) return res.status(400).json({ error: 'productId is required.' });
+    if (!isValidObjectId(productId)) return res.status(400).json({ error: 'Invalid productId.' });
 
     if (!PAYSTACK_CURRENCIES.has(currency.toUpperCase())) {
       return res.status(400).json({ error: `Paystack does not support ${currency}. Use NGN, USD, or GBP.` });
@@ -299,7 +327,7 @@ router.post('/webhook/paystack', express.raw({ type: '*/*' }), async (req, res, 
       .update(req.body)          // req.body is a Buffer here
       .digest('hex');
 
-    if (signature !== expected) {
+    if (!timingSafeCompare(signature, expected)) {
       return res.status(401).json({ error: 'Invalid Paystack signature.' });
     }
 
@@ -323,6 +351,10 @@ router.post('/webhook/paystack', express.raw({ type: '*/*' }), async (req, res, 
     const { productId, buyerId } = tx.metadata || {};
     if (!productId || !buyerId) {
       console.warn(`[paystack webhook] Missing metadata on reference=${reference}`);
+      return res.sendStatus(200);
+    }
+    if (!isValidObjectId(productId) || !isValidObjectId(buyerId)) {
+      console.warn(`[paystack webhook] Invalid ObjectId in metadata reference=${reference}`);
       return res.sendStatus(200);
     }
 

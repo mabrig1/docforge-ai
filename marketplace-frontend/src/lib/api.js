@@ -26,13 +26,15 @@ export function setToken(token) {
   // edge and redirect unauthenticated users before the page renders.
   // This cookie carries no sensitive data — it is only a routing signal.
   // The actual JWT validation always happens on the backend.
-  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Lax; max-age=${7 * 24 * 3600}`;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Lax; max-age=${7 * 24 * 3600}${secure}`;
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
   // Expire the session indicator cookie immediately
-  document.cookie = `${SESSION_COOKIE}=; path=/; SameSite=Lax; max-age=0`;
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${SESSION_COOKIE}=; path=/; SameSite=Lax; max-age=0${secure}`;
 }
 
 // ── Core fetch wrapper ─────────────────────────────────────────────────────

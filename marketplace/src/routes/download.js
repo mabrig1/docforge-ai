@@ -1,5 +1,6 @@
 const express    = require('express');
 const rateLimit  = require('express-rate-limit');
+const mongoose   = require('mongoose');
 const Order      = require('../models/Order');
 const Product    = require('../models/Product');
 const { protect }             = require('../middleware/auth');
@@ -45,6 +46,10 @@ const downloadLimiter = rateLimit({
 router.get('/:productId', protect, downloadLimiter, async (req, res, next) => {
   try {
     const { productId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ error: 'Invalid productId.' });
+    }
 
     // Step 3 — purchase verification
     const order = await Order.findOne({

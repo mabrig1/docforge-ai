@@ -184,6 +184,10 @@ router.get('/users', async (req, res, next) => {
 // ── PATCH /api/admin/users/:id/toggle ─────────────────────────────────────
 router.patch('/users/:id/toggle', async (req, res, next) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID.' });
+    }
+
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
