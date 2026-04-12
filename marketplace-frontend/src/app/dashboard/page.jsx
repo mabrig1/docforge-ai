@@ -40,7 +40,7 @@ export default function DashboardPage() {
   if (authLoading || (!user && loading)) return <LoadingSkeleton />;
 
   return (
-    <div className="space-y-8">
+    <div className="page-shell space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">My Library</h1>
         <p className="text-gray-400 text-sm mt-1">Your purchased digital products</p>

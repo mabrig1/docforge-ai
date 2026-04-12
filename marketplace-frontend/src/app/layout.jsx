@@ -13,9 +13,8 @@ export default function RootLayout({ children }) {
       <body>
         <AuthProvider>
           <Navbar />
-          <main className="mx-auto max-w-6xl px-4 py-10">
-            {children}
-          </main>
+          {/* No outer padding — pages control their own layout */}
+          <main>{children}</main>
         </AuthProvider>
       </body>
     </html>

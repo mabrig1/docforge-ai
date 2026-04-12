@@ -24,7 +24,7 @@ export default function AdminPage() {
   if (authLoading || !user) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="page-shell space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
         <span className="text-xs text-gray-500">{user.email}</span>

@@ -34,7 +34,7 @@ export default async function ProductPage({ params }) {
   const { pricing, productType, trackList, fileSizeBytes } = product;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+    <div className="page-shell grid grid-cols-1 md:grid-cols-2 gap-10">
       {/* Cover image */}
       <div className="relative aspect-[3/4] w-full max-w-sm mx-auto rounded-2xl
                        overflow-hidden bg-gray-800 shadow-2xl">
