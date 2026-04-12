@@ -12,17 +12,27 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 // ── Token helpers ──────────────────────────────────────────────────────────
-export const TOKEN_KEY = 'mkt_token';
+export const TOKEN_KEY   = 'mkt_token';
+const SESSION_COOKIE     = 'mkt_session'; // lightweight edge-readable flag
 
 export function getToken() {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(TOKEN_KEY);
 }
+
 export function setToken(token) {
   localStorage.setItem(TOKEN_KEY, token);
+  // Also write a non-httpOnly cookie so Next.js middleware can read it at the
+  // edge and redirect unauthenticated users before the page renders.
+  // This cookie carries no sensitive data — it is only a routing signal.
+  // The actual JWT validation always happens on the backend.
+  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Lax; max-age=${7 * 24 * 3600}`;
 }
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+  // Expire the session indicator cookie immediately
+  document.cookie = `${SESSION_COOKIE}=; path=/; SameSite=Lax; max-age=0`;
 }
 
 // ── Core fetch wrapper ─────────────────────────────────────────────────────
@@ -144,6 +154,20 @@ export async function getMyOrders() {
 export async function getAllOrders() {
   const data = await request('/api/orders');
   return data.orders;
+}
+
+// ── Admin ──────────────────────────────────────────────────────────────────
+export async function getAdminStats() {
+  return request('/api/admin/stats');
+}
+
+export async function getAdminUsers(page = 1) {
+  return request(`/api/admin/users?page=${page}`);
+}
+
+export async function toggleUser(id) {
+  const data = await request(`/api/admin/users/${id}/toggle`, { method: 'PATCH' });
+  return data.user;
 }
 
 // ── Downloads ──────────────────────────────────────────────────────────────

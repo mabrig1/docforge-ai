@@ -9,10 +9,11 @@ const cookieParser = require('cookie-parser');
 const connectDB  = require('./config/db');
 
 // ── Routes ─────────────────────────────────────────────────────────────────
-const authRoutes = require('./routes/auth');
-const productRoutes = require('./routes/products');
-const orderRoutes = require('./routes/orders');
+const authRoutes     = require('./routes/auth');
+const productRoutes  = require('./routes/products');
+const orderRoutes    = require('./routes/orders');
 const downloadRoutes = require('./routes/download');
+const adminRoutes    = require('./routes/admin');
 
 const app = express();
 
@@ -70,10 +71,14 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // ── API routes ─────────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
+const { protect, requireAdmin } = require('./middleware/auth');
+const _admin = [protect, requireAdmin];
+
+app.use('/api/auth',     authRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/orders', orderRoutes);
+app.use('/api/orders',   orderRoutes);
 app.use('/api/download', downloadRoutes);
+app.use('/api/admin',    _admin, adminRoutes);
 
 // ── 404 handler ────────────────────────────────────────────────────────────
 app.use((req, res) => {
