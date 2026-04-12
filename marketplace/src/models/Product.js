@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
-const PRODUCT_TYPES = ['book', 'audio'];
+const PRODUCT_TYPES     = ['book', 'audio'];
+const DELIVERY_METHODS  = ['r2', 'google_drive'];
 
 /**
  * Multi-currency pricing sub-document.
@@ -29,7 +30,6 @@ const productSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      // Derived from title on creation; used for SEO-friendly URLs
     },
     description: {
       type: String,
@@ -42,20 +42,41 @@ const productSchema = new mongoose.Schema(
       enum: PRODUCT_TYPES,
     },
 
+    // ── Delivery ────────────────────────────────────────────────────────────
+    /**
+     * How the file is delivered after purchase:
+     *   'r2'           — file lives in Cloudflare R2; generate a presigned URL
+     *   'google_drive' — file is shared via Google Drive; return the drive URL
+     */
+    deliveryMethod: {
+      type: String,
+      enum: DELIVERY_METHODS,
+      default: 'r2',
+    },
+
     // ── Media ───────────────────────────────────────────────────────────────
-    // Public URL of the cover image (can be Cloudflare R2 or a CDN URL)
     coverImageUrl: {
       type: String,
       required: [true, 'Cover image URL is required'],
     },
-    // The R2 object key (path inside the bucket) of the purchasable file.
-    // NEVER exposed to the client directly — used only server-side to
-    // generate pre-signed URLs after purchase verification.
-    // Example: "products/books/shadows-of-the-north.pdf"
+    /**
+     * R2 object key (path inside the bucket) for files stored on Cloudflare R2.
+     * Required when deliveryMethod === 'r2'.
+     * NEVER exposed in API responses — hidden with select: false.
+     */
     secureFileKey: {
       type: String,
-      required: [true, 'Secure file key is required'],
-      select: false, // Hidden from all API responses
+      select: false,
+    },
+    /**
+     * Google Drive share URL for files linked from Google Drive.
+     * Required when deliveryMethod === 'google_drive'.
+     * Hidden from public API — only revealed to the buyer after purchase.
+     */
+    googleDriveUrl: {
+      type: String,
+      trim: true,
+      select: false,
     },
 
     // ── Pricing ─────────────────────────────────────────────────────────────
@@ -69,23 +90,19 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // For books: author name; for audio: artist name
     creator: {
       type: String,
       trim: true,
     },
-    // For audio products: list of track titles (ordered)
     trackList: {
       type: [String],
-      default: undefined, // Omitted for books
+      default: undefined,
     },
-    // Approximate file size displayed to buyers before purchase
     fileSizeBytes: {
       type: Number,
       min: 0,
       default: null,
     },
-    // How many times this product has been purchased (denormalized counter)
     salesCount: {
       type: Number,
       default: 0,
@@ -102,9 +119,9 @@ productSchema.pre('validate', function (next) {
   if (this.isNew && this.title && !this.slug) {
     this.slug = this.title
       .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')   // strip special chars
-      .replace(/\s+/g, '-')            // spaces → hyphens
-      .replace(/-+/g, '-')             // collapse multiple hyphens
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
       .substring(0, 100);
   }
   next();

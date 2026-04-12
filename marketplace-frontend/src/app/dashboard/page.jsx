@@ -77,9 +77,20 @@ function PurchasedCard({ order }) {
     setBusy(true);
     setErr('');
     try {
-      const { downloadUrl } = await getDownloadUrl(product._id);
-      // Open the signed URL — browser handles the file download
-      window.open(downloadUrl, '_blank', 'noopener');
+      const { downloadUrl, isExternalLink } = await getDownloadUrl(product._id);
+      if (isExternalLink) {
+        // Google Drive link — open in a new tab
+        window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        // R2 presigned URL — trigger a direct browser download
+        const a = document.createElement('a');
+        a.href     = downloadUrl;
+        a.download = product.title || 'download';
+        a.rel      = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -127,7 +138,11 @@ function PurchasedCard({ order }) {
         disabled={busy}
         className="btn-primary w-full text-sm"
       >
-        {busy ? 'Generating link…' : '⬇ Download'}
+        {busy
+          ? 'Preparing…'
+          : product?.deliveryMethod === 'google_drive'
+            ? '📂 Open in Google Drive'
+            : '⬇ Download'}
       </button>
     </div>
   );

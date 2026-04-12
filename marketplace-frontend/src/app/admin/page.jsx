@@ -246,6 +246,7 @@ function ProductsTab() {
               <tr>
                 <th className="px-4 py-3 text-left">Title</th>
                 <th className="px-4 py-3 text-left">Type</th>
+                <th className="px-4 py-3 text-left">Delivery</th>
                 <th className="px-4 py-3 text-left">NGN</th>
                 <th className="px-4 py-3 text-left">Sales</th>
                 <th className="px-4 py-3 text-left">Status</th>
@@ -257,6 +258,14 @@ function ProductsTab() {
                 <tr key={p._id} className="hover:bg-gray-800/30 transition">
                   <td className="px-4 py-3 text-gray-100 max-w-[200px] truncate">{p.title}</td>
                   <td className="px-4 py-3 text-gray-400 capitalize">{p.productType}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+                      ${p.deliveryMethod === 'google_drive'
+                        ? 'bg-blue-900/40 text-blue-400'
+                        : 'bg-orange-900/30 text-orange-400'}`}>
+                      {p.deliveryMethod === 'google_drive' ? '📂 Drive' : '☁️ R2'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-gray-300">
                     {p.pricing?.ngn != null ? formatCurrency(p.pricing.ngn, 'NGN') : '—'}
                   </td>
@@ -288,17 +297,19 @@ function ProductsTab() {
 function ProductFormModal({ initial, onClose, onSaved }) {
   const isNew = !initial._id;
   const [form, setForm] = useState({
-    title:         initial.title         ?? '',
-    description:   initial.description   ?? '',
-    productType:   initial.productType   ?? 'book',
-    coverImageUrl: initial.coverImageUrl ?? '',
-    secureFileKey: initial.secureFileKey ?? '',
-    creator:       initial.creator       ?? '',
-    trackList:     (initial.trackList ?? []).join('\n'),
-    price_ngn:     initial.pricing?.ngn  ?? '',
-    price_usd:     initial.pricing?.usd  ?? '',
-    price_gbp:     initial.pricing?.gbp  ?? '',
-    price_eur:     initial.pricing?.eur  ?? '',
+    title:           initial.title          ?? '',
+    description:     initial.description    ?? '',
+    productType:     initial.productType    ?? 'book',
+    coverImageUrl:   initial.coverImageUrl  ?? '',
+    deliveryMethod:  initial.deliveryMethod ?? 'r2',
+    secureFileKey:   initial.secureFileKey  ?? '',
+    googleDriveUrl:  initial.googleDriveUrl ?? '',
+    creator:         initial.creator        ?? '',
+    trackList:       (initial.trackList ?? []).join('\n'),
+    price_ngn:       initial.pricing?.ngn   ?? '',
+    price_usd:       initial.pricing?.usd   ?? '',
+    price_gbp:       initial.pricing?.gbp   ?? '',
+    price_eur:       initial.pricing?.eur   ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -310,13 +321,22 @@ function ProductFormModal({ initial, onClose, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.secureFileKey) { setError('Please upload a product file first.'); return; }
+    // Validate delivery fields
+    if (form.deliveryMethod === 'r2' && !form.secureFileKey) {
+      setError('Please upload a product file to R2 first.'); return;
+    }
+    if (form.deliveryMethod === 'google_drive' && !form.googleDriveUrl) {
+      setError('Please enter the Google Drive share URL.'); return;
+    }
     setSaving(true); setError('');
     try {
       const payload = {
         title: form.title, description: form.description,
         productType: form.productType, coverImageUrl: form.coverImageUrl,
-        secureFileKey: form.secureFileKey, creator: form.creator || undefined,
+        deliveryMethod: form.deliveryMethod,
+        secureFileKey:  form.deliveryMethod === 'r2'           ? form.secureFileKey  : undefined,
+        googleDriveUrl: form.deliveryMethod === 'google_drive' ? form.googleDriveUrl : undefined,
+        creator: form.creator || undefined,
         trackList: form.trackList
           ? form.trackList.split('\n').map((t) => t.trim()).filter(Boolean)
           : undefined,
@@ -353,10 +373,66 @@ function ProductFormModal({ initial, onClose, onSaved }) {
             <Field label="Creator"><input className="input" name="creator" value={form.creator} onChange={handle} /></Field>
           </div>
           <Field label="Cover Image URL"><input className="input" name="coverImageUrl" value={form.coverImageUrl} onChange={handle} placeholder="https://…" required /></Field>
-          <Field label="Product File" hint="Upload PDF/EPUB for books, MP3/WAV for audio">
-            <R2FileUploader productType={form.productType} currentKey={form.secureFileKey}
-              onUploaded={(key) => setForm((f) => ({ ...f, secureFileKey: key }))} />
+
+          {/* ── Delivery method ──────────────────────────────────────────── */}
+          <Field label="File Delivery Method">
+            <div className="grid grid-cols-2 gap-3 mt-1">
+              {[
+                { value: 'r2',           label: '☁️ Upload to R2',      desc: 'Direct secure download (recommended)' },
+                { value: 'google_drive', label: '📂 Google Drive Link',  desc: 'Link to a Google Drive file' },
+              ].map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex flex-col gap-0.5 border rounded-xl p-3 cursor-pointer transition
+                    ${form.deliveryMethod === opt.value
+                      ? 'border-brand-500 bg-brand-900/20 text-white'
+                      : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                >
+                  <input
+                    type="radio" name="deliveryMethod" value={opt.value}
+                    checked={form.deliveryMethod === opt.value}
+                    onChange={handle}
+                    className="sr-only"
+                  />
+                  <span className="text-sm font-semibold">{opt.label}</span>
+                  <span className="text-xs text-gray-500">{opt.desc}</span>
+                </label>
+              ))}
+            </div>
           </Field>
+
+          {/* ── File source depending on delivery method ─────────────────── */}
+          {form.deliveryMethod === 'r2' ? (
+            <Field label="Product File (R2)" hint="PDF/EPUB for books · MP3/WAV for audio">
+              <R2FileUploader
+                productType={form.productType}
+                currentKey={form.secureFileKey}
+                onUploaded={(key) => setForm((f) => ({ ...f, secureFileKey: key }))}
+              />
+              {form.secureFileKey && (
+                <p className="text-xs text-green-400 mt-1">
+                  ✓ Uploaded: <span className="font-mono">{form.secureFileKey}</span>
+                </p>
+              )}
+            </Field>
+          ) : (
+            <Field
+              label="Google Drive Share URL"
+              hint="Use 'Anyone with the link can view'"
+            >
+              <input
+                className="input"
+                name="googleDriveUrl"
+                value={form.googleDriveUrl}
+                onChange={handle}
+                placeholder="https://drive.google.com/file/d/…/view?usp=sharing"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Buyers receive this link only after a confirmed purchase.
+              </p>
+            </Field>
+          )}
+
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Pricing</p>
           <div className="grid grid-cols-2 gap-4">
             {[['price_ngn','NGN (₦)'],['price_usd','USD ($)'],['price_gbp','GBP (£)'],['price_eur','EUR (€)']].map(([name, label]) => (

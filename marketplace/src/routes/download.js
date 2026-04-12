@@ -10,14 +10,8 @@ const router = express.Router();
 
 /**
  * Per-user download rate limiter.
- *
- * Allows each authenticated user to generate at most 10 pre-signed URLs
- * per 15-minute window — enough for legitimate use but prevents a buyer
- * from flooding R2 with thousands of signed URLs or scraping via automation.
- *
- * The key function uses the authenticated user ID (set by protect middleware)
- * so the limit is per-buyer, not per-IP (which would affect users behind NAT).
- * Falls back to IP if req.user is somehow not set.
+ * 10 pre-signed URLs per 15 minutes per buyer (not per IP).
+ * Admin users are exempt.
  */
 const downloadLimiter = rateLimit({
   windowMs:         15 * 60 * 1000,
@@ -26,7 +20,6 @@ const downloadLimiter = rateLimit({
   standardHeaders:  true,
   legacyHeaders:    false,
   message:          { error: 'Too many download requests. Please wait 15 minutes and try again.' },
-  // Skip the limiter for admin users — they may need bulk access
   skip:             (req) => req.user?.role === 'admin',
 });
 
@@ -34,14 +27,20 @@ const downloadLimiter = rateLimit({
 /**
  * Purchase-gated secure download.
  *
+ * Handles two delivery methods:
+ *   deliveryMethod === 'r2'
+ *     Generates a short-lived Cloudflare R2 pre-signed GET URL.
+ *   deliveryMethod === 'google_drive'
+ *     Returns the private Google Drive share URL (never exposed until purchased).
+ *
  * Steps:
  *  1. protect middleware verifies JWT → req.user
- *  2. downloadLimiter enforces 10 req/15 min per buyer
- *  3. Confirm a completed Order for (buyer, product).
- *  4. Load the Product with secureFileKey (select: false field).
- *  5. Generate a short-lived R2 pre-signed GET URL.
- *  6. Increment downloadCount + record lastDownloadAt (non-blocking).
- *  7. Return the signed URL.
+ *  2. downloadLimiter: 10 req/15 min per buyer
+ *  3. Confirm a completed Order for (buyer, product)
+ *  4. Load Product with hidden fields (+secureFileKey +googleDriveUrl)
+ *  5. Generate delivery URL based on deliveryMethod
+ *  6. Increment downloadCount + lastDownloadAt (non-blocking)
+ *  7. Return response
  */
 router.get('/:productId', protect, downloadLimiter, async (req, res, next) => {
   try {
@@ -62,17 +61,34 @@ router.get('/:productId', protect, downloadLimiter, async (req, res, next) => {
       return res.status(403).json({ error: 'You have not purchased this product.' });
     }
 
-    // Step 4 — load the private file key
-    const product = await Product.findById(productId).select('+secureFileKey');
+    // Step 4 — load the private delivery fields
+    const product = await Product.findById(productId)
+      .select('+secureFileKey +googleDriveUrl');
+
     if (!product || !product.isPublished) {
       return res.status(404).json({ error: 'Product not found.' });
     }
-    if (!product.secureFileKey) {
-      return res.status(500).json({ error: 'Product file is not yet available.' });
-    }
 
-    // Step 5 — generate time-limited signed URL
-    const url = await generatePresignedUrl(product.secureFileKey);
+    // Step 5 — build the delivery URL based on method
+    const method = product.deliveryMethod || 'r2';
+    let downloadUrl;
+    let isExternalLink = false;
+    let expiresInSeconds = null;
+
+    if (method === 'google_drive') {
+      if (!product.googleDriveUrl) {
+        return res.status(500).json({ error: 'Product file is not yet available.' });
+      }
+      downloadUrl    = product.googleDriveUrl;
+      isExternalLink = true;
+    } else {
+      // r2 (default)
+      if (!product.secureFileKey) {
+        return res.status(500).json({ error: 'Product file is not yet available.' });
+      }
+      downloadUrl    = await generatePresignedUrl(product.secureFileKey);
+      expiresInSeconds = Number(process.env.R2_URL_EXPIRES ?? 900);
+    }
 
     // Step 6 — track (fire-and-forget)
     Order.findByIdAndUpdate(order._id, {
@@ -82,9 +98,11 @@ router.get('/:productId', protect, downloadLimiter, async (req, res, next) => {
 
     // Step 7 — respond
     res.json({
-      downloadUrl:      url,
-      expiresInSeconds: Number(process.env.R2_URL_EXPIRES ?? 900),
-      productTitle:     product.title,
+      downloadUrl,
+      isExternalLink,
+      expiresInSeconds,
+      productTitle:  product.title,
+      deliveryMethod: method,
     });
   } catch (err) {
     next(err);
