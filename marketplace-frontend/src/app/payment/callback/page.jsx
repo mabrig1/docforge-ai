@@ -3,51 +3,41 @@
 /**
  * /payment/callback
  *
- * Both Flutterwave and Paystack redirect here after a payment attempt.
- *
- * Flutterwave appends:
- *   ?provider=flutterwave&status=successful|cancelled|failed
- *   &tx_ref=DF-FLW-...&transaction_id=<id>
- *
- * Paystack appends:
- *   ?provider=paystack&reference=DF-PSK-...&trxref=DF-PSK-...
- *   (Paystack does NOT include a status param — we treat any redirect as
- *    "payment attempted" and rely on backend verification via polling)
- *
- * Strategy:
- *  - Detect provider from ?provider= param.
- *  - For Flutterwave: if status !== "successful" show failure immediately.
- *  - For Paystack:    always poll (we can't trust the redirect URL alone).
- *  - Poll GET /api/orders/mine up to MAX_POLLS times until a new order appears.
+ * Flutterwave: ?provider=flutterwave&status=successful|cancelled&tx_ref=...
+ * Paystack:    ?provider=paystack&reference=...
+ * PayPal:      ?provider=paypal&token=<paypalOrderId>&PayerID=...
+ *              or ?provider=paypal&status=cancelled
  */
 
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getMyOrders } from '@/lib/api';
+import { getMyOrders, capturePaypalOrder } from '@/lib/api';
 
 const MAX_POLLS  = 10;
-const POLL_DELAY = 2000; // ms
+const POLL_DELAY = 2000;
 
 export default function PaymentCallbackPage() {
   const searchParams = useSearchParams();
 
-  const provider    = searchParams.get('provider') ?? 'flutterwave';
+  const provider  = searchParams.get('provider') ?? 'flutterwave';
+  const status    = searchParams.get('status');
 
-  // Flutterwave params
-  const flwStatus = searchParams.get('status');       // "successful" | "cancelled" | "failed"
+  // Provider-specific params
+  const flwStatus = provider === 'flutterwave' ? status : null;
   const txRef     = searchParams.get('tx_ref');
-
-  // Paystack params
   const pskRef    = searchParams.get('reference') ?? searchParams.get('trxref');
+  const ppToken   = searchParams.get('token');   // PayPal order ID
 
-  const [state, setState] = useState('polling');   // polling | confirmed | failed
+  const [state, setState] = useState('polling');
   const [order, setOrder] = useState(null);
   const polls = useRef(0);
+  const captured = useRef(false);
 
-  // For Flutterwave, show immediate failure if status is non-successful
+  const isCancelled = status === 'cancelled';
   const isDefiniteFail =
-    provider === 'flutterwave' && flwStatus && flwStatus !== 'successful';
+    (provider === 'flutterwave' && flwStatus && flwStatus !== 'successful') ||
+    (provider === 'paypal' && isCancelled);
 
   useEffect(() => {
     if (isDefiniteFail) {
@@ -55,11 +45,26 @@ export default function PaymentCallbackPage() {
       return;
     }
 
-    let cancelled = false;
+    let stopped = false;
+
+    async function run() {
+      // PayPal: capture first, then poll
+      if (provider === 'paypal' && ppToken && !captured.current) {
+        captured.current = true;
+        try {
+          await capturePaypalOrder(ppToken);
+        } catch (e) {
+          if (!stopped) setState('failed');
+          return;
+        }
+      }
+
+      poll();
+    }
 
     async function poll() {
-      if (cancelled || polls.current >= MAX_POLLS) {
-        if (!cancelled) setState('failed');
+      if (stopped || polls.current >= MAX_POLLS) {
+        if (!stopped) setState('failed');
         return;
       }
       polls.current += 1;
@@ -67,15 +72,14 @@ export default function PaymentCallbackPage() {
       try {
         const orders = await getMyOrders();
 
-        // Match the order by the reference embedded in txRef/pskRef
-        // Format: DF-FLW-<userId>-<productId>-<ts>  or  DF-PSK-<userId>-<productId>-<ts>
-        const ref = provider === 'paystack' ? pskRef : txRef;
-        const productIdFromRef = ref?.split('-')[3] ?? null;
+        const ref = provider === 'paystack' ? pskRef
+                  : provider === 'paypal'   ? ppToken
+                  : txRef;
 
         const match = orders.find((o) =>
-          (o.flutterwaveTxRef === ref) ||
-          (o.paystackReference === ref) ||
-          (productIdFromRef && o.product?._id === productIdFromRef)
+          o.flutterwaveTxRef   === ref ||
+          o.paystackReference  === ref ||
+          o.paypalOrderId      === ref
         );
 
         if (match) {
@@ -84,18 +88,19 @@ export default function PaymentCallbackPage() {
           return;
         }
       } catch {
-        // ignore, keep polling
+        // keep polling
       }
 
       setTimeout(poll, POLL_DELAY);
     }
 
-    // Give the webhook a head start before first poll
-    setTimeout(poll, 1800);
-    return () => { cancelled = true; };
-  }, [isDefiniteFail, provider, txRef, pskRef]);
+    setTimeout(run, provider === 'paypal' ? 500 : 1800);
+    return () => { stopped = true; };
+  }, [isDefiniteFail, provider, txRef, pskRef, ppToken]);
 
-  const providerName = provider === 'paystack' ? 'Paystack' : 'Flutterwave';
+  const providerName = provider === 'paystack' ? 'Paystack'
+                     : provider === 'paypal'   ? 'PayPal'
+                     : 'Flutterwave';
 
   return (
     <div className="max-w-md mx-auto text-center space-y-6 pt-16">
@@ -105,7 +110,9 @@ export default function PaymentCallbackPage() {
           <Spinner />
           <h1 className="text-xl font-bold text-white">Confirming your payment…</h1>
           <p className="text-gray-400 text-sm">
-            Waiting for {providerName} to confirm. This usually takes a few seconds.
+            {provider === 'paypal'
+              ? 'Capturing your PayPal payment…'
+              : `Waiting for ${providerName} to confirm. This usually takes a few seconds.`}
           </p>
         </>
       )}
@@ -126,14 +133,12 @@ export default function PaymentCallbackPage() {
 
       {state === 'failed' && (
         <>
-          <div className="text-6xl">
-            {flwStatus === 'cancelled' ? '🚫' : '❌'}
-          </div>
+          <div className="text-6xl">{isCancelled ? '🚫' : '❌'}</div>
           <h1 className="text-2xl font-bold text-white">
-            {flwStatus === 'cancelled' ? 'Payment cancelled' : 'Payment not confirmed'}
+            {isCancelled ? 'Payment cancelled' : 'Payment not confirmed'}
           </h1>
           <p className="text-gray-400 text-sm">
-            {flwStatus === 'cancelled'
+            {isCancelled
               ? 'You cancelled the payment. No charge was made.'
               : `We could not confirm your payment via ${providerName}. ` +
                 `If you were charged, please check your library or contact support.`}

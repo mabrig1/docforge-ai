@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const CURRENCIES = ['NGN', 'USD', 'GBP', 'EUR'];
-const PROVIDERS  = ['flutterwave', 'paystack'];
+const PROVIDERS  = ['flutterwave', 'paystack', 'paypal'];
 
 /**
  * An Order is created ONLY after a verified payment webhook fires.
@@ -46,6 +46,20 @@ const orderSchema = new mongoose.Schema(
       trim: true,
     },
     flutterwaveTransactionId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+
+    // ── PayPal fields (set when provider === 'paypal') ─────────────────────
+    paypalOrderId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
+    paypalCaptureId: {
       type: String,
       unique: true,
       sparse: true,

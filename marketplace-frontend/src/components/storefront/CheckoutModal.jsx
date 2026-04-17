@@ -7,11 +7,11 @@ import {
   CreditCard, ShieldCheck, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { initiateFlutterwaveOrder, initiatePaystackOrder } from '@/lib/api';
+import { initiateFlutterwaveOrder, initiatePaystackOrder, initiatePaypalOrder } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
-// Paystack does not support EUR
 const PAYSTACK_CURRENCIES = new Set(['NGN', 'USD', 'GBP']);
+const PAYPAL_CURRENCIES   = new Set(['USD', 'GBP', 'EUR']);
 
 const CURRENCY_META = {
   NGN: { symbol: '₦' },
@@ -71,9 +71,14 @@ export default function CheckoutModal({ product, currency: initialCurrency, onCl
   }
 
   const availableProviders = [
-    { id: 'paystack',     name: 'Paystack',     desc: 'Card · Bank · USSD', emoji: '🟢' },
-    { id: 'flutterwave',  name: 'Flutterwave',  desc: 'Card · USSD · Bank', emoji: '🟠' },
-  ].filter((p) => p.id === 'flutterwave' || PAYSTACK_CURRENCIES.has(currency));
+    { id: 'paystack',    name: 'Paystack',    desc: 'Card · Bank · USSD', emoji: '🟢' },
+    { id: 'flutterwave', name: 'Flutterwave', desc: 'Card · USSD · Bank', emoji: '🟠' },
+    { id: 'paypal',      name: 'PayPal',      desc: 'PayPal balance · Card', emoji: '🔵' },
+  ].filter((p) => {
+    if (p.id === 'paystack')   return PAYSTACK_CURRENCIES.has(currency);
+    if (p.id === 'paypal')     return PAYPAL_CURRENCIES.has(currency);
+    return true; // flutterwave always available
+  });
 
   async function handlePay() {
     if (!user) {
@@ -83,10 +88,13 @@ export default function CheckoutModal({ product, currency: initialCurrency, onCl
     setError('');
     setLoading(true);
     try {
-      const initiate = provider === 'paystack'
-        ? initiatePaystackOrder
-        : initiateFlutterwaveOrder;
-      const { paymentLink } = await initiate(productId, currency);
+      const initiate = provider === 'paystack'  ? initiatePaystackOrder
+                     : provider === 'paypal'    ? initiatePaypalOrder
+                     : initiateFlutterwaveOrder;
+      // PayPal defaults to USD if NGN is selected (NGN not supported)
+      const effectiveCurrency = provider === 'paypal' && !PAYPAL_CURRENCIES.has(currency)
+        ? 'USD' : currency;
+      const { paymentLink } = await initiate(productId, effectiveCurrency);
       window.location.href = paymentLink;
     } catch (e) {
       setError(e.message);
@@ -217,7 +225,12 @@ export default function CheckoutModal({ product, currency: initialCurrency, onCl
             </div>
             {currency === 'EUR' && (
               <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
-                <span>⚠️</span> EUR is only available via Flutterwave.
+                <span>⚠️</span> EUR is available via Flutterwave or PayPal.
+              </p>
+            )}
+            {currency === 'NGN' && provider === 'paypal' && (
+              <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+                <span>⚠️</span> PayPal will charge in USD (NGN not supported by PayPal).
               </p>
             )}
           </div>
@@ -257,7 +270,7 @@ export default function CheckoutModal({ product, currency: initialCurrency, onCl
               <>
                 <CreditCard size={20} />
                 {user
-                  ? `Pay ${priceStr} with ${provider === 'paystack' ? 'Paystack' : 'Flutterwave'}`
+                  ? `Pay ${priceStr} with ${provider === 'paystack' ? 'Paystack' : provider === 'paypal' ? 'PayPal' : 'Flutterwave'}`
                   : `Login & Pay ${priceStr}`}
               </>
             )}
@@ -266,7 +279,7 @@ export default function CheckoutModal({ product, currency: initialCurrency, onCl
           <div className="flex items-center justify-center gap-2
                            text-xs text-gray-500 font-medium">
             <ShieldCheck size={15} className="text-green-600 shrink-0" />
-            Secured by Flutterwave &amp; Paystack · Instant download after payment
+            Secured by Flutterwave, Paystack &amp; PayPal · Instant download after payment
           </div>
         </div>
       </div>

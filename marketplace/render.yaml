@@ -60,6 +60,14 @@ services:
       - key: PAYSTACK_PUBLIC_KEY
         sync: false
 
+      # ── PayPal ───────────────────────────────────────────────────────────
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_ENV
+        value: live
+
       # ── CORS ─────────────────────────────────────────────────────────────
       - key: CORS_ORIGINS
         value: https://creators.fintigen.com

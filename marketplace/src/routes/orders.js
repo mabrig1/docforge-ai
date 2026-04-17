@@ -78,8 +78,12 @@ async function validatePurchase(productId, currency, userId) {
  */
 async function fulfillOrder({ provider, txRef, gatewayTxId, buyerId, productId,
                                amountCharged, currency, expectedAmount, product }) {
-  const matchKey   = provider === 'paystack' ? 'paystackReference'       : 'flutterwaveTxRef';
-  const txIdKey    = provider === 'paystack' ? 'paystackTransactionId'   : 'flutterwaveTransactionId';
+  const matchKey = provider === 'paystack' ? 'paystackReference'
+                 : provider === 'paypal'   ? 'paypalOrderId'
+                 : 'flutterwaveTxRef';
+  const txIdKey  = provider === 'paystack' ? 'paystackTransactionId'
+                 : provider === 'paypal'   ? 'paypalCaptureId'
+                 : 'flutterwaveTransactionId';
 
   const inserted = await Order.findOneAndUpdate(
     { [matchKey]: txRef },
@@ -386,6 +390,157 @@ router.post('/webhook/paystack', express.raw({ type: '*/*' }), async (req, res, 
 
     res.sendStatus(200);
   } catch (err) {
+    next(err);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PAYPAL
+// ══════════════════════════════════════════════════════════════════════════════
+
+const PAYPAL_CURRENCIES = new Set(['USD', 'GBP', 'EUR']);
+
+function getPaypalBase() {
+  return process.env.PAYPAL_ENV === 'sandbox'
+    ? 'https://api-m.sandbox.paypal.com'
+    : 'https://api-m.paypal.com';
+}
+
+async function getPaypalAccessToken() {
+  const base = getPaypalBase();
+  const auth = Buffer.from(
+    `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`
+  ).toString('base64');
+
+  const res  = await fetch(`${base}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=client_credentials',
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error('Could not authenticate with PayPal.');
+  return data.access_token;
+}
+
+// ── POST /api/orders/initiate/paypal ─────────────────────────────────────
+router.post('/initiate/paypal', protect, async (req, res, next) => {
+  try {
+    const { productId, currency = 'USD' } = req.body;
+    if (!productId) return res.status(400).json({ error: 'productId is required.' });
+    if (!isValidObjectId(productId)) return res.status(400).json({ error: 'Invalid productId.' });
+
+    if (!PAYPAL_CURRENCIES.has(currency.toUpperCase())) {
+      return res.status(400).json({ error: `PayPal does not support ${currency}. Use USD, GBP, or EUR.` });
+    }
+
+    const { product, amount } = await validatePurchase(productId, currency, req.user._id);
+
+    const accessToken = await getPaypalAccessToken();
+    const base        = getPaypalBase();
+    const frontend    = process.env.FRONTEND_URL || 'https://creators.fintigen.com';
+
+    const payload = {
+      intent: 'CAPTURE',
+      purchase_units: [{
+        amount: { currency_code: currency.toUpperCase(), value: amount.toFixed(2) },
+        description: product.title,
+        custom_id: JSON.stringify({
+          productId: product._id.toString(),
+          buyerId:   req.user._id.toString(),
+        }),
+      }],
+      application_context: {
+        brand_name:          'Mabrig Marketplace',
+        shipping_preference: 'NO_SHIPPING',
+        user_action:         'PAY_NOW',
+        return_url: `${frontend}/payment/callback?provider=paypal`,
+        cancel_url: `${frontend}/payment/callback?provider=paypal&status=cancelled`,
+      },
+    };
+
+    const ppRes  = await fetch(`${base}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const ppData = await ppRes.json();
+
+    if (!ppData.id) {
+      console.error('[paypal initiate] error:', ppData);
+      return res.status(502).json({ error: 'PayPal error. Please try again.' });
+    }
+
+    const approveLink = ppData.links?.find((l) => l.rel === 'approve')?.href;
+    if (!approveLink) return res.status(502).json({ error: 'PayPal approval link missing.' });
+
+    res.json({ paymentLink: approveLink, paypalOrderId: ppData.id, provider: 'paypal' });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+// ── POST /api/orders/paypal/capture/:paypalOrderId ────────────────────────
+router.post('/paypal/capture/:paypalOrderId', protect, async (req, res, next) => {
+  try {
+    const { paypalOrderId } = req.params;
+
+    const accessToken = await getPaypalAccessToken();
+    const base        = getPaypalBase();
+
+    const captureRes  = await fetch(`${base}/v2/checkout/orders/${paypalOrderId}/capture`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    });
+    const captureData = await captureRes.json();
+
+    if (captureData.status !== 'COMPLETED') {
+      console.warn('[paypal capture] not completed:', captureData.status);
+      return res.status(400).json({ error: 'PayPal payment not completed.' });
+    }
+
+    const purchaseUnit = captureData.purchase_units?.[0];
+    const capture      = purchaseUnit?.payments?.captures?.[0];
+    if (!capture) return res.status(400).json({ error: 'PayPal capture data missing.' });
+
+    let productId, buyerId;
+    try {
+      ({ productId, buyerId } = JSON.parse(purchaseUnit.custom_id || '{}'));
+    } catch {
+      return res.status(400).json({ error: 'Invalid PayPal order metadata.' });
+    }
+
+    if (!isValidObjectId(productId) || !isValidObjectId(buyerId)) {
+      return res.status(400).json({ error: 'Invalid IDs in PayPal order metadata.' });
+    }
+
+    const product = await Product.findById(productId);
+    if (!product) return res.status(404).json({ error: 'Product not found.' });
+
+    const amountCharged  = parseFloat(capture.amount.value);
+    const currency       = capture.amount.currency_code.toUpperCase();
+    const expectedAmount = product.pricing[currency.toLowerCase()];
+
+    if (!expectedAmount || amountCharged < expectedAmount * 0.99) {
+      console.warn('[paypal capture] amount mismatch', { amountCharged, expectedAmount });
+      return res.status(400).json({ error: 'Payment amount mismatch.' });
+    }
+
+    await fulfillOrder({
+      provider:      'paypal',
+      txRef:         paypalOrderId,
+      gatewayTxId:   capture.id,
+      buyerId,
+      productId,
+      amountCharged,
+      currency,
+      expectedAmount,
+      product,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });

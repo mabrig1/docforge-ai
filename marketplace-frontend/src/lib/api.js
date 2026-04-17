@@ -148,6 +148,29 @@ export async function initiatePaystackOrder(productId, currency = 'NGN') {
   });
 }
 
+/**
+ * Starts a PayPal checkout session.
+ * Returns { paymentLink, paypalOrderId, provider: 'paypal' }.
+ * Supported currencies: USD, GBP, EUR.
+ */
+export async function initiatePaypalOrder(productId, currency = 'USD') {
+  return request('/api/orders/initiate/paypal', {
+    method: 'POST',
+    body: { productId, currency },
+  });
+}
+
+/**
+ * Captures a PayPal order after user approval.
+ * Called from the payment callback page with the token param PayPal appends.
+ */
+export async function capturePaypalOrder(paypalOrderId) {
+  return request(`/api/orders/paypal/capture/${paypalOrderId}`, {
+    method: 'POST',
+    body: {},
+  });
+}
+
 export async function getMyOrders() {
   const data = await request('/api/orders/mine');
   return data.orders;
