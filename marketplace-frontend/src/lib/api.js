@@ -9,7 +9,7 @@
  * and the Auth context can use them directly.
  */
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 // ── Token helpers ──────────────────────────────────────────────────────────
 export const TOKEN_KEY   = 'mkt_token';
