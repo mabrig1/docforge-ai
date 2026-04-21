@@ -24,8 +24,8 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(form);
-      router.push(redirect);
+      const u = await login(form);
+      router.push(u.role === 'admin' ? '/admin' : redirect);
     } catch (err) {
       setError(err.message);
       setLoading(false);
