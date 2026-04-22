@@ -205,4 +205,19 @@ router.patch('/users/:id/toggle', async (req, res, next) => {
   }
 });
 
+// ── GET /api/admin/products ───────────────────────────────────────────────
+// Returns ALL products regardless of isPublished, so admins can see and
+// publish newly created drafts. Private delivery fields are still stripped.
+router.get('/products', async (req, res, next) => {
+  try {
+    const products = await Product.find({})
+      .select('-secureFileKey -googleDriveUrl')
+      .sort({ createdAt: -1 })
+      .limit(200);
+    res.json({ products });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

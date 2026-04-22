@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
-  listProducts, createProduct, updateProduct,
+  listAdminProducts, createProduct, updateProduct,
   getAllOrders, getAdminStats, getAdminUsers, toggleUser,
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
@@ -217,7 +217,7 @@ function ProductsTab() {
 
   const refresh = useCallback(() => {
     setLoading(true);
-    listProducts()
+    listAdminProducts()
       .then(setProducts)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));

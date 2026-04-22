@@ -186,6 +186,11 @@ export async function getAdminStats() {
   return request('/api/admin/stats');
 }
 
+export async function listAdminProducts() {
+  const data = await request('/api/admin/products');
+  return data.products;
+}
+
 export async function getAdminUsers(page = 1) {
   return request(`/api/admin/users?page=${page}`);
 }
