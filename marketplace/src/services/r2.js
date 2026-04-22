@@ -93,7 +93,14 @@ async function generateUploadPresignedUrl(objectKey, contentType, expiresIn = 30
     Key: objectKey,
     ContentType: contentType,
   });
-  return getSignedUrl(getClient(), command, { expiresIn });
+  // Prevent the SDK middleware from hoisting checksum headers into the signed
+  // URL as query params (x-amz-checksum-crc32, x-amz-sdk-checksum-algorithm).
+  // R2 would then require the browser to send those headers, which it cannot
+  // do via plain XHR, causing a 400.
+  return getSignedUrl(getClient(), command, {
+    expiresIn,
+    unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
+  });
 }
 
 module.exports = { generatePresignedUrl, generateUploadPresignedUrl };
