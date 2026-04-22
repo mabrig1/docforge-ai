@@ -11,7 +11,7 @@
  *  5. Browse All — tab-filtered full product grid
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -20,6 +20,7 @@ import {
   ExternalLink, ShieldCheck,
 } from 'lucide-react';
 import CheckoutModal from './CheckoutModal';
+import { listProducts } from '@/lib/api';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -68,18 +69,24 @@ export default function StorefrontClient({ initialProducts = [] }) {
   const [activeTab, setActiveTab]           = useState('all');
   const [currency, setCurrency]             = useState('NGN');
   const [checkoutProduct, setCheckoutProduct] = useState(null);
+  const [products, setProducts]             = useState(initialProducts);
 
-  const books  = useMemo(() => initialProducts.filter((p) => p.productType === 'book'),  [initialProducts]);
-  const albums = useMemo(() => initialProducts.filter((p) => p.productType === 'audio'), [initialProducts]);
+  // Re-fetch client-side so a stale SSR cache never leaves the storefront empty
+  useEffect(() => {
+    listProducts().then(setProducts).catch(() => {});
+  }, []);
 
-  const featured = initialProducts[0] ?? null;
+  const books  = useMemo(() => products.filter((p) => p.productType === 'book'),  [products]);
+  const albums = useMemo(() => products.filter((p) => p.productType === 'audio'), [products]);
+
+  const featured = products[0] ?? null;
 
   const filtered = useMemo(() => {
-    if (activeTab === 'all')   return initialProducts;
+    if (activeTab === 'all')   return products;
     if (activeTab === 'book')  return books;
     if (activeTab === 'audio') return albums;
-    return initialProducts;
-  }, [activeTab, initialProducts, books, albums]);
+    return products;
+  }, [activeTab, products, books, albums]);
 
   return (
     <div className="min-h-screen bg-white text-gray-900 -mt-10 font-sans">
@@ -142,7 +149,7 @@ export default function StorefrontClient({ initialProducts = [] }) {
         <HeroSection
           product={featured}
           currency={currency}
-          allProducts={initialProducts}
+          allProducts={products}
           onBuyNow={setCheckoutProduct}
         />
       )}

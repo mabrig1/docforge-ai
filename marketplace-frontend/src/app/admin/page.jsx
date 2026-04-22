@@ -240,49 +240,12 @@ function ProductsTab() {
       </div>
       {error && <p className="text-red-400 text-sm">{error}</p>}
       {loading ? <p className="text-gray-500 text-sm">Loading…</p> : (
-        <div className="overflow-x-auto rounded-xl border border-gray-800">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-800/60 text-gray-400 text-xs uppercase tracking-wide">
-              <tr>
-                <th className="px-4 py-3 text-left">Title</th>
-                <th className="px-4 py-3 text-left">Type</th>
-                <th className="px-4 py-3 text-left">Delivery</th>
-                <th className="px-4 py-3 text-left">NGN</th>
-                <th className="px-4 py-3 text-left">Sales</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {products.map((p) => (
-                <tr key={p._id} className="hover:bg-gray-800/30 transition">
-                  <td className="px-4 py-3 text-gray-100 max-w-[200px] truncate">{p.title}</td>
-                  <td className="px-4 py-3 text-gray-400 capitalize">{p.productType}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-                      ${p.deliveryMethod === 'google_drive'
-                        ? 'bg-blue-900/40 text-blue-400'
-                        : 'bg-orange-900/30 text-orange-400'}`}>
-                      {p.deliveryMethod === 'google_drive' ? '📂 Drive' : '☁️ R2'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {p.pricing?.ngn != null ? formatCurrency(p.pricing.ngn, 'NGN') : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-gray-400">{p.salesCount ?? 0}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge active={p.isPublished} trueLabel="Live" falseLabel="Draft" />
-                  </td>
-                  <td className="px-4 py-3 flex gap-2">
-                    <button onClick={() => setEditing(p)} className="text-xs text-brand-400 hover:underline">Edit</button>
-                    <button onClick={() => togglePublish(p)} className="text-xs text-gray-400 hover:text-white">
-                      {p.isPublished ? 'Unpublish' : 'Publish'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {products.map((p) => (
+            <ProductCard key={p._id} product={p}
+              onEdit={() => setEditing(p)}
+              onTogglePublish={() => togglePublish(p)} />
+          ))}
         </div>
       )}
       {editing !== null && (
@@ -294,6 +257,76 @@ function ProductsTab() {
 }
 
 // ── Product create / edit modal ─────────────────────────────────────────────
+function ProductCard({ product: p, onEdit, onTogglePublish }) {
+  const [copied, setCopied] = useState(false);
+
+  function share() {
+    const url = `${window.location.origin}/products/${p.slug}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-700 bg-gray-900 overflow-hidden flex flex-col">
+      {/* Cover image */}
+      {p.coverImageUrl ? (
+        <img src={p.coverImageUrl} alt={p.title}
+          className="w-full h-40 object-cover" />
+      ) : (
+        <div className="w-full h-40 bg-gray-800 flex items-center justify-center text-gray-600 text-xs">
+          No cover
+        </div>
+      )}
+
+      <div className="p-4 flex flex-col gap-3 flex-1">
+        {/* Title + badges */}
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">{p.title}</h3>
+          <StatusBadge active={p.isPublished} trueLabel="Live" falseLabel="Draft" />
+        </div>
+
+        {/* Description */}
+        {p.description && (
+          <p className="text-xs text-gray-400 line-clamp-3">{p.description}</p>
+        )}
+
+        {/* Meta row */}
+        <div className="flex gap-2 text-xs text-gray-500 flex-wrap">
+          <span className="capitalize">{p.productType}</span>
+          <span>·</span>
+          <span>{p.pricing?.ngn != null ? formatCurrency(p.pricing.ngn, 'NGN') : '—'}</span>
+          <span>·</span>
+          <span>{p.salesCount ?? 0} sales</span>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 mt-auto pt-2 border-t border-gray-800">
+          <button onClick={onEdit}
+            className="flex-1 text-xs py-1.5 rounded-lg bg-gray-800 text-brand-400 hover:bg-gray-700 transition">
+            Edit
+          </button>
+          <button onClick={onTogglePublish}
+            className={`flex-1 text-xs py-1.5 rounded-lg transition ${
+              p.isPublished
+                ? 'bg-gray-800 text-red-400 hover:bg-gray-700'
+                : 'bg-brand-600 text-white hover:bg-brand-500'
+            }`}>
+            {p.isPublished ? 'Unpublish' : 'Publish'}
+          </button>
+          {p.isPublished && (
+            <button onClick={share} title="Copy link"
+              className="px-3 text-xs py-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition">
+              {copied ? '✓' : '🔗'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProductFormModal({ initial, onClose, onSaved }) {
   const isNew = !initial._id;
   const [form, setForm] = useState({
