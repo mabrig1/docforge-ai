@@ -39,6 +39,11 @@ function buildR2Client() {
       accessKeyId: process.env.R2_ACCESS_KEY_ID,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     },
+    // R2 doesn't support AWS SDK v3's automatic CRC32 checksum injection.
+    // Without these, the presigned PUT URL includes x-amz-checksum-crc32 as a
+    // required query param, but the browser XHR never sends the header → 400.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
 }
 
