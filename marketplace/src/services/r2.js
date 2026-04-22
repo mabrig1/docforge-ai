@@ -24,7 +24,7 @@
  * then saves the resulting object key in Product.secureFileKey.
  */
 
-const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // ── Build S3-compatible client pointing at Cloudflare R2 ──────────────────
@@ -103,4 +103,33 @@ async function generateUploadPresignedUrl(objectKey, contentType, expiresIn = 30
   });
 }
 
-module.exports = { generatePresignedUrl, generateUploadPresignedUrl };
+/**
+ * Applies a CORS policy to the R2 bucket so browsers can PUT files directly.
+ * Called once at server startup. Allowed origins come from CORS_ORIGINS env var
+ * (comma-separated), falling back to '*' when not set.
+ */
+async function setupBucketCors() {
+  const rawOrigins = process.env.CORS_ORIGINS || '';
+  const allowedOrigins = rawOrigins
+    ? rawOrigins.split(',').map((o) => o.trim()).filter(Boolean)
+    : ['*'];
+
+  const command = new PutBucketCorsCommand({
+    Bucket: BUCKET(),
+    CORSConfiguration: {
+      CORSRules: [
+        {
+          AllowedOrigins: allowedOrigins,
+          AllowedMethods: ['PUT'],
+          AllowedHeaders: ['*'],
+          MaxAgeSeconds: 3600,
+        },
+      ],
+    },
+  });
+
+  await getClient().send(command);
+  console.log(`R2 CORS configured for origins: ${allowedOrigins.join(', ')}`);
+}
+
+module.exports = { generatePresignedUrl, generateUploadPresignedUrl, setupBucketCors };

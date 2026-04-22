@@ -81,6 +81,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // ── API routes ─────────────────────────────────────────────────────────────
 const { protect, requireAdmin } = require('./middleware/auth');
+const { setupBucketCors } = require('./services/r2');
 const _admin = [protect, requireAdmin];
 
 app.use('/api/auth',     authRoutes);
@@ -122,6 +123,9 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   await connectDB();
+  await setupBucketCors().catch((err) =>
+    console.warn('R2 CORS setup skipped:', err.message)
+  );
   app.listen(PORT, () => {
     console.log(`Marketplace API listening on port ${PORT} [${process.env.NODE_ENV}]`);
   });
