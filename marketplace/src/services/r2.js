@@ -93,13 +93,13 @@ async function generateUploadPresignedUrl(objectKey, contentType, expiresIn = 30
     Key: objectKey,
     ContentType: contentType,
   });
-  // Prevent the SDK middleware from hoisting checksum headers into the signed
-  // URL as query params (x-amz-checksum-crc32, x-amz-sdk-checksum-algorithm).
-  // R2 would then require the browser to send those headers, which it cannot
-  // do via plain XHR, causing a 400.
+  // unsignableHeaders removes x-amz-checksum-* from the signer's consideration
+  // entirely, so they never appear in the URL or as required headers.
+  // (unhoistableHeaders is wrong here — it keeps them as required HTTP headers,
+  // which the browser XHR still can't supply.)
   return getSignedUrl(getClient(), command, {
     expiresIn,
-    unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
+    unsignableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
   });
 }
 
