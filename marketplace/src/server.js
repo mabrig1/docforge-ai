@@ -15,6 +15,7 @@ const productRoutes  = require('./routes/products');
 const orderRoutes    = require('./routes/orders');
 const downloadRoutes = require('./routes/download');
 const adminRoutes    = require('./routes/admin');
+const Product        = require('./models/Product');
 
 const app = express();
 
@@ -123,6 +124,20 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   await connectDB();
+
+  // Fix any slugs that were truncated with a trailing hyphen (one-time migration)
+  try {
+    const broken = await Product.find({ slug: /-$/ }).select('_id slug');
+    for (const p of broken) {
+      await Product.updateOne({ _id: p._id }, { slug: p.slug.replace(/-+$/, '') });
+    }
+    if (broken.length > 0) {
+      console.log(`Slug migration: fixed ${broken.length} trailing-hyphen slug(s)`);
+    }
+  } catch (err) {
+    console.warn('Slug migration skipped:', err.message);
+  }
+
   await setupBucketCors().catch((err) =>
     console.warn('R2 CORS setup skipped:', err.message)
   );

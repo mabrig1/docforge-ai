@@ -122,7 +122,8 @@ productSchema.pre('validate', function (next) {
       .replace(/[^a-z0-9\s-]/g, '')
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
-      .substring(0, 100);
+      .substring(0, 100)
+      .replace(/-+$/, '');  // never end on a hyphen after truncation
   }
   next();
 });

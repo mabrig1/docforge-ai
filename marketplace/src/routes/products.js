@@ -54,8 +54,11 @@ router.get('/', async (req, res, next) => {
 // ── GET /api/products/:slug ───────────────────────────────────────────────
 router.get('/:slug', async (req, res, next) => {
   try {
+    // Normalize: strip trailing hyphens produced when a long title is truncated
+    // at a word boundary during slug generation (e.g. shared Facebook URLs).
+    const slug = req.params.slug.replace(/-+$/, '');
     const product = await Product.findOne({
-      slug: req.params.slug,
+      slug,
       isPublished: true,
     }).select('-secureFileKey -googleDriveUrl');
 
