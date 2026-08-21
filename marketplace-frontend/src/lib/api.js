@@ -216,3 +216,11 @@ export async function getDownloadUrl(productId) {
 export async function getFreeDownloadUrl(productId) {
   return request(`/api/download/free/${productId}`, { auth: false });
 }
+
+/**
+ * Returns a short-lived URL for a published audio product with streaming
+ * enabled by an administrator.
+ */
+export async function getAudioStreamUrl(productId) {
+  return request(`/api/download/stream/${productId}`, { auth: false });
+}
