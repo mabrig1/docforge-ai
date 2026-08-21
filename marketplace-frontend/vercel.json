@@ -14,7 +14,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.flutterwave.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' https://api.flutterwave.com https://*.r2.dev https://*.r2.cloudflarestorage.com https://docforgebackend.vercel.app https://store-api.mabrigkorie.org https://store.mabrigkorie.org; frame-src https://checkout.flutterwave.com;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.flutterwave.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; connect-src 'self' https://api.flutterwave.com https://*.r2.dev https://*.r2.cloudflarestorage.com https://docforgebackend.vercel.app https://store-api.mabrigkorie.org https://store.mabrigkorie.org; media-src 'self' blob: https://*.r2.dev https://*.r2.cloudflarestorage.com; frame-src https://checkout.flutterwave.com;"
         }
       ]
     }
