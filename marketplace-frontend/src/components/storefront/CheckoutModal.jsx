@@ -7,7 +7,7 @@ import {
   CreditCard, ShieldCheck, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { initiateFlutterwaveOrder, initiatePaystackOrder, initiatePaypalOrder } from '@/lib/api';
+import { initiateFlutterwaveOrder, initiatePaystackOrder, initiatePaypalOrder, getFreeDownloadUrl } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 const PAYSTACK_CURRENCIES = new Set(['NGN', 'USD', 'GBP']);
@@ -102,9 +102,50 @@ export default function CheckoutModal({ product, currency: initialCurrency, onCl
     }
   }
 
+  async function handleFreeDownload() {
+    setError('');
+    setLoading(true);
+    try {
+      const { downloadUrl } = await getFreeDownloadUrl(productId);
+      window.location.assign(downloadUrl);
+    } catch (e) {
+      setError(e.message);
+      setLoading(false);
+    }
+  }
+
   // Close on backdrop click
   function handleBackdrop(e) {
     if (e.target === e.currentTarget) onClose();
+  }
+
+  if (product.isFree) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+        onClick={handleBackdrop}
+      >
+        <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+          <button onClick={onClose} className="float-right text-gray-400 hover:text-gray-800">
+            <X size={22} />
+          </button>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-2xl">
+            ↓
+          </div>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">Free resource</p>
+          <h2 className="mt-2 text-xl font-extrabold text-slate-900">{title}</h2>
+          <p className="mt-2 text-sm text-gray-500">No payment or account is required.</p>
+          {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+          <button
+            onClick={handleFreeDownload}
+            disabled={loading}
+            className="mt-5 w-full rounded-xl bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {loading ? 'Preparing download…' : 'Download Free'}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

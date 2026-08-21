@@ -90,6 +90,27 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Free products bypass checkout but still use short-lived R2 URLs (or the
+    // configured Google Drive link) so the storage key is never exposed.
+    isFree: {
+      type: Boolean,
+      default: false,
+    },
+    freeDownloadCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Audio products can be streamed publicly without exposing the R2 key.
+    allowStreaming: {
+      type: Boolean,
+      default: false,
+    },
+    streamCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     creator: {
       type: String,
       trim: true,

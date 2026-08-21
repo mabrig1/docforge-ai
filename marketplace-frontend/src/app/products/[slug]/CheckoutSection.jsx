@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { initiateFlutterwaveOrder, initiatePaystackOrder } from '@/lib/api';
+import { initiateFlutterwaveOrder, initiatePaystackOrder, getFreeDownloadUrl } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 const CURRENCIES = [
@@ -95,6 +95,44 @@ export default function CheckoutSection({ product }) {
       setError(e.message);
       setLoading(false);
     }
+  }
+
+  async function handleFreeDownload() {
+    setError('');
+    setLoading(true);
+    try {
+      const { downloadUrl } = await getFreeDownloadUrl(productId);
+      window.location.assign(downloadUrl);
+    } catch (e) {
+      setError(e.message);
+      setLoading(false);
+    }
+  }
+
+  if (product.isFree) {
+    return (
+      <div className="card space-y-4 border border-emerald-700/50 bg-emerald-950/20">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-400">
+            Free digital resource
+          </p>
+          <p className="mt-1 text-sm text-gray-300">
+            No payment or account is required. Click below for instant access.
+          </p>
+        </div>
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <button
+          onClick={handleFreeDownload}
+          disabled={loading}
+          className="w-full rounded-lg bg-emerald-600 py-3 font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+        >
+          {loading ? 'Preparing download…' : 'Download Free'}
+        </button>
+        <p className="text-center text-xs text-gray-500">
+          Secure, time-limited download link
+        </p>
+      </div>
+    );
   }
 
   if (!available.length) {
