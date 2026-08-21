@@ -51,8 +51,23 @@ router.post('/signup', signupLimiter, async (req, res, next) => {
       return res.status(409).json({ error: 'An account with that email already exists.' });
     }
 
+    // The protected ADMIN_EMAIL environment variable provides a safe recovery
+    // path when the original administrator account is unavailable. It never
+    // exposes a password or grants admin based on client-supplied role data.
+    const configuredAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const normalizedEmail = email.toLowerCase();
+    const role = configuredAdminEmail && normalizedEmail === configuredAdminEmail
+      ? 'admin'
+      : 'buyer';
+
     // passwordHash field triggers bcrypt in the pre-save hook
-    const user = await User.create({ name, email, passwordHash: password });
+    const user = await User.create({
+      name,
+      email: normalizedEmail,
+      passwordHash: password,
+      role,
+      isActive: true,
+    });
     const token = signToken(user);
 
     if (COOKIE_MODE) setTokenCookie(res, token);
@@ -86,6 +101,20 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       // Identical message for both "not found" and "wrong password" to prevent
       // user enumeration attacks
       return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const configuredAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    if (configuredAdminEmail && user.email === configuredAdminEmail) {
+      let changed = false;
+      if (user.role !== 'admin') {
+        user.role = 'admin';
+        changed = true;
+      }
+      if (!user.isActive) {
+        user.isActive = true;
+        changed = true;
+      }
+      if (changed) await user.save();
     }
 
     if (!user.isActive) {
