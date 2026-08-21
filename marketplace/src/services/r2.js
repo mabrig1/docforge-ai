@@ -79,6 +79,26 @@ async function generatePresignedUrl(objectKey, expiresIn) {
 }
 
 /**
+ * Generates a time-limited inline URL suitable for the native HTML audio
+ * player. This deliberately does not reuse the download signer, which sets
+ * Content-Disposition to attachment.
+ */
+async function generateStreamingPresignedUrl(objectKey, expiresIn) {
+  const ttl = expiresIn ?? Number(process.env.R2_URL_EXPIRES ?? 900);
+  const extension = objectKey.split('.').pop()?.toLowerCase();
+  const contentType = extension === 'wav' ? 'audio/wav' : 'audio/mpeg';
+  const filename = objectKey.split('/').pop();
+
+  const command = new GetObjectCommand({
+    Bucket: BUCKET(),
+    Key: objectKey,
+    ResponseContentDisposition: `inline; filename="${filename}"`,
+    ResponseContentType: contentType,
+  });
+  return getSignedUrl(getClient(), command, { expiresIn: ttl });
+}
+
+/**
  * Generates a time-limited PUT URL so an admin client can upload a file
  * directly to R2 without routing it through the Express server.
  *
@@ -132,4 +152,9 @@ async function setupBucketCors() {
   console.log(`R2 CORS configured for origins: ${allowedOrigins.join(', ')}`);
 }
 
-module.exports = { generatePresignedUrl, generateUploadPresignedUrl, setupBucketCors };
+module.exports = {
+  generatePresignedUrl,
+  generateStreamingPresignedUrl,
+  generateUploadPresignedUrl,
+  setupBucketCors,
+};

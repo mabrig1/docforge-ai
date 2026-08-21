@@ -4,7 +4,10 @@ const mongoose   = require('mongoose');
 const Order      = require('../models/Order');
 const Product    = require('../models/Product');
 const { protect }             = require('../middleware/auth');
-const { generatePresignedUrl } = require('../services/r2');
+const {
+  generatePresignedUrl,
+  generateStreamingPresignedUrl,
+} = require('../services/r2');
 
 const router = express.Router();
 
@@ -110,7 +113,7 @@ router.get('/stream/:productId', async (req, res, next) => {
       return res.status(500).json({ error: 'The audio file has not been uploaded yet.' });
     }
 
-    const streamUrl = await generatePresignedUrl(product.secureFileKey);
+    const streamUrl = await generateStreamingPresignedUrl(product.secureFileKey);
     Product.updateOne({ _id: product._id }, { $inc: { streamCount: 1 } })
       .exec()
       .catch(() => {});
