@@ -125,6 +125,28 @@ const PORT = process.env.PORT || 5000;
 (async () => {
   await connectDB();
 
+  // Backfill feature flags for the existing featured song created before the
+  // free-download and streaming fields were introduced. The $exists guard
+  // makes this migration idempotent and preserves later admin choices.
+  try {
+    const featuredSong = await Product.updateOne(
+      {
+        slug: 'morning-noon-and-night-praise-him',
+        productType: 'audio',
+        $or: [
+          { isFree: { $exists: false } },
+          { allowStreaming: { $exists: false } },
+        ],
+      },
+      { $set: { isFree: true, allowStreaming: true } }
+    );
+    if (featuredSong.modifiedCount > 0) {
+      console.log('Product migration: enabled streaming and free download for Morning, Noon and Night');
+    }
+  } catch (err) {
+    console.warn('Featured song migration skipped:', err.message);
+  }
+
   // Fix any slugs that were truncated with a trailing hyphen (one-time migration)
   try {
     const broken = await Product.find({ slug: /-$/ }).select('_id slug');
