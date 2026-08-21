@@ -296,7 +296,7 @@ function ProductCard({ product: p, onEdit, onTogglePublish }) {
         <div className="flex gap-2 text-xs text-gray-500 flex-wrap">
           <span className="capitalize">{p.productType}</span>
           <span>·</span>
-          <span>{p.pricing?.ngn != null ? formatCurrency(p.pricing.ngn, 'NGN') : '—'}</span>
+          <span>{p.isFree ? 'FREE' : p.pricing?.ngn != null ? formatCurrency(p.pricing.ngn, 'NGN') : '—'}</span>
           <span>·</span>
           <span>{p.salesCount ?? 0} sales</span>
         </div>
@@ -337,6 +337,7 @@ function ProductFormModal({ initial, onClose, onSaved }) {
     deliveryMethod:  initial.deliveryMethod ?? 'r2',
     secureFileKey:   initial.secureFileKey  ?? '',
     googleDriveUrl:  initial.googleDriveUrl ?? '',
+    isFree:          initial.isFree         ?? false,
     creator:         initial.creator        ?? '',
     trackList:       (initial.trackList ?? []).join('\n'),
     price_ngn:       initial.pricing?.ngn   ?? '',
@@ -348,8 +349,8 @@ function ProductFormModal({ initial, onClose, onSaved }) {
   const [error, setError]   = useState('');
 
   function handle(e) {
-    const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }));
   }
 
   async function handleSubmit(e) {
@@ -369,6 +370,7 @@ function ProductFormModal({ initial, onClose, onSaved }) {
         deliveryMethod: form.deliveryMethod,
         secureFileKey:  form.deliveryMethod === 'r2'           ? form.secureFileKey  : undefined,
         googleDriveUrl: form.deliveryMethod === 'google_drive' ? form.googleDriveUrl : undefined,
+        isFree: Boolean(form.isFree),
         creator: form.creator || undefined,
         trackList: form.trackList
           ? form.trackList.split('\n').map((t) => t.trim()).filter(Boolean)
@@ -465,6 +467,26 @@ function ProductFormModal({ initial, onClose, onSaved }) {
               </p>
             </Field>
           )}
+
+          <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+            form.isFree
+              ? 'border-emerald-500 bg-emerald-950/30'
+              : 'border-gray-700 bg-gray-800/40'
+          }`}>
+            <input
+              type="checkbox"
+              name="isFree"
+              checked={form.isFree}
+              onChange={handle}
+              className="mt-1 h-4 w-4 accent-emerald-500"
+            />
+            <span>
+              <span className="block text-sm font-bold text-white">Free download</span>
+              <span className="block text-xs text-gray-400">
+                Visitors can download this published product without payment or an account.
+              </span>
+            </span>
+          </label>
 
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Pricing</p>
           <div className="grid grid-cols-2 gap-4">
