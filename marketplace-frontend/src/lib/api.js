@@ -208,3 +208,11 @@ export async function toggleUser(id) {
 export async function getDownloadUrl(productId) {
   return request(`/api/download/${productId}`);
 }
+
+/**
+ * Returns a short-lived public download URL for an administrator-designated
+ * free product. No account or payment is required.
+ */
+export async function getFreeDownloadUrl(productId) {
+  return request(`/api/download/free/${productId}`, { auth: false });
+}
