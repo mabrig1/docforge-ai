@@ -140,8 +140,9 @@ async function setupBucketCors() {
       CORSRules: [
         {
           AllowedOrigins: allowedOrigins,
-          AllowedMethods: ['PUT'],
+          AllowedMethods: ['GET', 'HEAD', 'PUT'],
           AllowedHeaders: ['*'],
+          ExposeHeaders: ['Accept-Ranges', 'Content-Length', 'Content-Range', 'ETag'],
           MaxAgeSeconds: 3600,
         },
       ],
