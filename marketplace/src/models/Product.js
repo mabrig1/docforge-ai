@@ -101,6 +101,16 @@ const productSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Audio products can be streamed publicly without exposing the R2 key.
+    allowStreaming: {
+      type: Boolean,
+      default: false,
+    },
+    streamCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     creator: {
       type: String,
       trim: true,
