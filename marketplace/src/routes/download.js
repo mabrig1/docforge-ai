@@ -23,6 +23,66 @@ const downloadLimiter = rateLimit({
   skip:             (req) => req.user?.role === 'admin',
 });
 
+// ── GET /api/download/free/:productId ─────────────────────────────────────
+/**
+ * Public download for products explicitly marked free by an administrator.
+ * Private storage fields remain hidden; R2 downloads use short-lived signed
+ * URLs and Google Drive links are returned only for published free products.
+ */
+router.get('/free/:productId', async (req, res, next) => {
+  try {
+    const { productId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ error: 'Invalid productId.' });
+    }
+
+    const product = await Product.findOne({
+      _id: productId,
+      isPublished: true,
+      isFree: true,
+    }).select('+secureFileKey +googleDriveUrl');
+
+    if (!product) {
+      return res.status(404).json({ error: 'Free product not found.' });
+    }
+
+    const method = product.deliveryMethod || 'r2';
+    let downloadUrl;
+    let isExternalLink = false;
+    let expiresInSeconds = null;
+
+    if (method === 'google_drive') {
+      if (!product.googleDriveUrl) {
+        return res.status(500).json({ error: 'Product file is not yet available.' });
+      }
+      downloadUrl = product.googleDriveUrl;
+      isExternalLink = true;
+    } else {
+      if (!product.secureFileKey) {
+        return res.status(500).json({ error: 'Product file is not yet available.' });
+      }
+      downloadUrl = await generatePresignedUrl(product.secureFileKey);
+      expiresInSeconds = Number(process.env.R2_URL_EXPIRES ?? 900);
+    }
+
+    Product.updateOne(
+      { _id: product._id },
+      { $inc: { freeDownloadCount: 1 } }
+    ).exec().catch(() => {});
+
+    res.json({
+      downloadUrl,
+      isExternalLink,
+      expiresInSeconds,
+      productTitle: product.title,
+      deliveryMethod: method,
+      isFree: true,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /api/download/:productId ──────────────────────────────────────────
 /**
  * Purchase-gated secure download.
