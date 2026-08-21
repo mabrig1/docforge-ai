@@ -75,7 +75,7 @@ router.post('/', protect, requireAdmin, async (req, res, next) => {
     const {
       title, description, productType, coverImageUrl,
       deliveryMethod = 'r2', secureFileKey, googleDriveUrl,
-      pricing, creator, trackList, fileSizeBytes, isFree = false,
+      pricing, creator, trackList, fileSizeBytes, isFree = false, allowStreaming = false,
     } = req.body;
 
     // Validate delivery method and its required field
@@ -93,6 +93,7 @@ router.post('/', protect, requireAdmin, async (req, res, next) => {
       title, description, productType, coverImageUrl,
       deliveryMethod, secureFileKey, googleDriveUrl,
       pricing, creator, trackList, fileSizeBytes, isFree: Boolean(isFree),
+      allowStreaming: productType === 'audio' && Boolean(allowStreaming),
     });
 
     // Strip private fields from response
@@ -116,7 +117,7 @@ router.patch('/:id', protect, requireAdmin, async (req, res, next) => {
     const UPDATABLE = [
       'title', 'description', 'coverImageUrl', 'pricing',
       'isPublished', 'creator', 'trackList', 'fileSizeBytes',
-      'deliveryMethod', 'secureFileKey', 'googleDriveUrl', 'isFree',
+      'deliveryMethod', 'secureFileKey', 'googleDriveUrl', 'isFree', 'allowStreaming',
     ];
     const updates = Object.fromEntries(
       Object.entries(req.body).filter(([k]) => UPDATABLE.includes(k))
