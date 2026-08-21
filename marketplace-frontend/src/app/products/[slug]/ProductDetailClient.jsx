@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { getProduct } from '@/lib/api';
 import { formatFileSize } from '@/lib/utils';
 import CheckoutSection from './CheckoutSection';
+import AudioPlayer from './AudioPlayer';
 
 export default function ProductDetailClient({ slug }) {
   const [product, setProduct] = useState(null);
@@ -91,6 +92,10 @@ export default function ProductDetailClient({ slug }) {
             <span className="chip">🛒 {product.salesCount} sold</span>
           )}
         </div>
+
+        {productType === 'audio' && product.allowStreaming && (
+          <AudioPlayer product={product} />
+        )}
 
         {productType === 'audio' && trackList?.length > 0 && (
           <div className="card space-y-2">
