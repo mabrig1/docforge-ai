@@ -338,6 +338,7 @@ function ProductFormModal({ initial, onClose, onSaved }) {
     secureFileKey:   initial.secureFileKey  ?? '',
     googleDriveUrl:  initial.googleDriveUrl ?? '',
     isFree:          initial.isFree         ?? false,
+    allowStreaming:  initial.allowStreaming ?? false,
     creator:         initial.creator        ?? '',
     trackList:       (initial.trackList ?? []).join('\n'),
     price_ngn:       initial.pricing?.ngn   ?? '',
@@ -371,6 +372,7 @@ function ProductFormModal({ initial, onClose, onSaved }) {
         secureFileKey:  form.deliveryMethod === 'r2'           ? form.secureFileKey  : undefined,
         googleDriveUrl: form.deliveryMethod === 'google_drive' ? form.googleDriveUrl : undefined,
         isFree: Boolean(form.isFree),
+        allowStreaming: form.productType === 'audio' && Boolean(form.allowStreaming),
         creator: form.creator || undefined,
         trackList: form.trackList
           ? form.trackList.split('\n').map((t) => t.trim()).filter(Boolean)
@@ -487,6 +489,28 @@ function ProductFormModal({ initial, onClose, onSaved }) {
               </span>
             </span>
           </label>
+
+          {form.productType === 'audio' && (
+            <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+              form.allowStreaming
+                ? 'border-sky-500 bg-sky-950/30'
+                : 'border-gray-700 bg-gray-800/40'
+            }`}>
+              <input
+                type="checkbox"
+                name="allowStreaming"
+                checked={form.allowStreaming}
+                onChange={handle}
+                className="mt-1 h-4 w-4 accent-sky-500"
+              />
+              <span>
+                <span className="block text-sm font-bold text-white">Allow public streaming</span>
+                <span className="block text-xs text-gray-400">
+                  Adds an audio player so everyone can listen. R2 upload is required.
+                </span>
+              </span>
+            </label>
+          )}
 
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Pricing</p>
           <div className="grid grid-cols-2 gap-4">
