@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Gift } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function Navbar() {
@@ -20,7 +21,15 @@ export default function Navbar() {
         </Link>
 
         {/* Right-side actions */}
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-1 text-sm sm:gap-2">
+          <Link
+            href="/free"
+            className="flex items-center gap-1 rounded-lg px-2 py-1.5 font-semibold text-emerald-400 transition hover:bg-gray-800 hover:text-emerald-300 sm:px-3"
+          >
+            <Gift size={15} />
+            <span className="sm:hidden">Free</span>
+            <span className="hidden sm:inline">Free Stuff</span>
+          </Link>
           {!loading && (
             <>
               {user ? (

@@ -17,7 +17,7 @@ import Link from 'next/link';
 import {
   BookOpen, Music, Star, TrendingUp, ShoppingBag,
   ArrowRight, ChevronLeft, ChevronRight, Download,
-  ExternalLink, ShieldCheck,
+  ExternalLink, ShieldCheck, Gift,
 } from 'lucide-react';
 import CheckoutModal from './CheckoutModal';
 import { listProducts } from '@/lib/api';
@@ -97,6 +97,12 @@ export default function StorefrontClient({ initialProducts = [] }) {
                         flex items-center justify-between h-11 gap-6">
           {/* Category pills */}
           <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
+            <Link
+              href="/free"
+              className="flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold text-emerald-100 transition-colors hover:bg-white/10 hover:text-white whitespace-nowrap"
+            >
+              <Gift size={14} /> Free Stuff
+            </Link>
             {[
               { id: 'all',   label: 'All Products',   icon: <ShoppingBag size={14} /> },
               { id: 'book',  label: 'Books',           icon: <BookOpen size={14} /> },
