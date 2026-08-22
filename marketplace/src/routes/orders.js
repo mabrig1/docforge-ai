@@ -22,10 +22,21 @@ const mongoose  = require('mongoose');
 const Order     = require('../models/Order');
 const Product   = require('../models/Product');
 const User      = require('../models/User');
+const AnalyticsEvent = require('../models/AnalyticsEvent');
 const { protect, requireAdmin } = require('../middleware/auth');
 const { sendPurchaseReceipt }   = require('../services/email');
 
 const router = express.Router();
+
+function recordPurchaseAttempt({ userId, productId, provider, currency }) {
+  AnalyticsEvent.create({
+    type: 'purchase_attempt',
+    visitorId: `user:${userId}`,
+    product: productId,
+    provider,
+    currency: currency.toUpperCase(),
+  }).catch((err) => console.warn('Purchase attempt analytics skipped:', err.message));
+}
 
 /**
  * Constant-time string comparison to prevent timing-based signature forgery.
@@ -136,6 +147,12 @@ router.post('/initiate/flutterwave', protect, async (req, res, next) => {
     if (!isValidObjectId(productId)) return res.status(400).json({ error: 'Invalid productId.' });
 
     const { product, amount } = await validatePurchase(productId, currency, req.user._id);
+    recordPurchaseAttempt({
+      userId: req.user._id,
+      productId: product._id,
+      provider: 'flutterwave',
+      currency,
+    });
 
     const txRef    = `DF-FLW-${req.user._id}-${productId}-${Date.now()}`;
     const frontend = process.env.FRONTEND_URL || 'https://creators.fintigen.com';
@@ -258,6 +275,12 @@ router.post('/initiate/paystack', protect, async (req, res, next) => {
     }
 
     const { product, amount } = await validatePurchase(productId, currency, req.user._id);
+    recordPurchaseAttempt({
+      userId: req.user._id,
+      productId: product._id,
+      provider: 'paystack',
+      currency,
+    });
 
     // Paystack reference — must be unique per transaction
     const reference = `DF-PSK-${req.user._id}-${productId}-${Date.now()}`;
@@ -434,6 +457,12 @@ router.post('/initiate/paypal', protect, async (req, res, next) => {
     }
 
     const { product, amount } = await validatePurchase(productId, currency, req.user._id);
+    recordPurchaseAttempt({
+      userId: req.user._id,
+      productId: product._id,
+      provider: 'paypal',
+      currency,
+    });
 
     const accessToken = await getPaypalAccessToken();
     const base        = getPaypalBase();
