@@ -15,6 +15,7 @@ const productRoutes  = require('./routes/products');
 const orderRoutes    = require('./routes/orders');
 const downloadRoutes = require('./routes/download');
 const adminRoutes    = require('./routes/admin');
+const analyticsRoutes = require('./routes/analytics');
 const Product        = require('./models/Product');
 
 const app = express();
@@ -88,8 +89,9 @@ const _admin = [protect, requireAdmin];
 app.use('/api/auth',     authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders',   orderRoutes);
-app.use('/api/download', downloadRoutes);
-app.use('/api/admin',    _admin, adminRoutes);
+app.use('/api/download',  downloadRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/admin',     _admin, adminRoutes);
 
 // ── 404 handler ────────────────────────────────────────────────────────────
 app.use((req, res) => {
