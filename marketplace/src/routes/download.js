@@ -3,6 +3,7 @@ const rateLimit  = require('express-rate-limit');
 const mongoose   = require('mongoose');
 const Order      = require('../models/Order');
 const Product    = require('../models/Product');
+const AnalyticsEvent = require('../models/AnalyticsEvent');
 const { protect }             = require('../middleware/auth');
 const {
   generatePresignedUrl,
@@ -72,6 +73,11 @@ router.get('/free/:productId', async (req, res, next) => {
       { _id: product._id },
       { $inc: { freeDownloadCount: 1 } }
     ).exec().catch(() => {});
+    AnalyticsEvent.create({
+      type: 'download',
+      product: product._id,
+      path: `/products/${product.slug || product._id}`,
+    }).catch(() => {});
 
     res.json({
       downloadUrl,
@@ -117,6 +123,11 @@ router.get('/stream/:productId', async (req, res, next) => {
     Product.updateOne({ _id: product._id }, { $inc: { streamCount: 1 } })
       .exec()
       .catch(() => {});
+    AnalyticsEvent.create({
+      type: 'stream',
+      product: product._id,
+      path: `/products/${product.slug || product._id}`,
+    }).catch(() => {});
 
     res.json({
       streamUrl,
@@ -200,6 +211,12 @@ router.get('/:productId', protect, downloadLimiter, async (req, res, next) => {
       $inc:          { downloadCount: 1 },
       lastDownloadAt: new Date(),
     }).exec();
+    AnalyticsEvent.create({
+      type: 'download',
+      visitorId: `user:${req.user._id}`,
+      product: product._id,
+      path: `/products/${product.slug || product._id}`,
+    }).catch(() => {});
 
     // Step 7 — respond
     res.json({
