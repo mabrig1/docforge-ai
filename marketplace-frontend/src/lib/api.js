@@ -13,7 +13,21 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 // ── Token helpers ──────────────────────────────────────────────────────────
 export const TOKEN_KEY   = 'mkt_token';
+export const VISITOR_KEY = 'mkt_visitor_id';
 const SESSION_COOKIE     = 'mkt_session'; // lightweight edge-readable flag
+
+export function getVisitorId() {
+  if (typeof window === 'undefined') return null;
+
+  let visitorId = localStorage.getItem(VISITOR_KEY);
+  if (!visitorId) {
+    visitorId = typeof crypto?.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `visitor_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(VISITOR_KEY, visitorId);
+  }
+  return visitorId;
+}
 
 export function getToken() {
   if (typeof window === 'undefined') return null;
@@ -179,6 +193,17 @@ export async function getMyOrders() {
 export async function getAllOrders() {
   const data = await request('/api/orders');
   return data.orders;
+}
+
+// ── Privacy-safe storefront analytics ─────────────────────────────────────
+export async function trackPageView(path) {
+  const visitorId = getVisitorId();
+  if (!visitorId) return null;
+  return request('/api/analytics/event', {
+    method: 'POST',
+    auth: false,
+    body: { type: 'page_view', visitorId, path },
+  });
 }
 
 // ── Admin ──────────────────────────────────────────────────────────────────
