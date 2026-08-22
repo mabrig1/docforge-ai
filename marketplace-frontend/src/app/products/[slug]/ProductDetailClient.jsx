@@ -7,6 +7,7 @@ import { getProduct } from '@/lib/api';
 import { formatFileSize } from '@/lib/utils';
 import CheckoutSection from './CheckoutSection';
 import AudioPlayer from './AudioPlayer';
+import ShareButtons from '@/components/storefront/ShareButtons';
 
 export default function ProductDetailClient({ slug }) {
   const [product, setProduct] = useState(null);
@@ -114,6 +115,10 @@ export default function ProductDetailClient({ slug }) {
         )}
 
         <CheckoutSection product={product} />
+
+        <div className="card border border-gray-800 bg-gray-900/60">
+          <ShareButtons product={product} />
+        </div>
       </div>
     </div>
   );
