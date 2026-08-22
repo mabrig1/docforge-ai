@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, Facebook, MessageCircle, Share2 } from 'lucide-react';
+import { Check, Copy, MessageCircle, Share2 } from 'lucide-react';
 
 const STORE_ORIGIN = process.env.NEXT_PUBLIC_STORE_URL || 'https://store.mabrigkorie.org';
 
@@ -62,7 +62,7 @@ export default function ShareButtons({ product, compact = false }) {
           aria-label="Share on Facebook"
           className={`${base} border-blue-700 bg-blue-950/30 text-blue-300 hover:bg-blue-900/50`}
         >
-          <Facebook size={16} />{compact ? null : 'Facebook'}
+          <span className="font-black" aria-hidden="true">f</span>{compact ? null : 'Facebook'}
         </a>
         <a
           href={`https://twitter.com/intent/tweet?text=${encodedMessage}&url=${encodedUrl}`}
