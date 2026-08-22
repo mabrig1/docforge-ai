@@ -21,8 +21,8 @@ export function getVisitorId() {
 
   let visitorId = localStorage.getItem(VISITOR_KEY);
   if (!visitorId) {
-    visitorId = typeof crypto?.randomUUID === 'function'
-      ? crypto.randomUUID()
+    visitorId = typeof window.crypto?.randomUUID === 'function'
+      ? window.crypto.randomUUID()
       : `visitor_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     localStorage.setItem(VISITOR_KEY, visitorId);
   }
