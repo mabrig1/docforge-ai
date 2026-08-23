@@ -46,5 +46,8 @@ const analyticsEventSchema = new mongoose.Schema(
 
 analyticsEventSchema.index({ type: 1, createdAt: -1 });
 analyticsEventSchema.index({ product: 1, type: 1, createdAt: -1 });
+// Raw analytics are operational telemetry rather than permanent business
+// records. Keep one year of events; lifetime order/product counters remain.
+analyticsEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
 
 module.exports = mongoose.model('AnalyticsEvent', analyticsEventSchema);
