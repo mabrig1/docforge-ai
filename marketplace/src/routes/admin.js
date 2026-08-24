@@ -15,19 +15,22 @@ const mongoose = require('mongoose');
 const Order   = require('../models/Order');
 const Product = require('../models/Product');
 const User    = require('../models/User');
+const AnalyticsEvent = require('../models/AnalyticsEvent');
 
 const router = express.Router();
 
 // ── GET /api/admin/stats ──────────────────────────────────────────────────
 /**
- * Returns:
- *   summary    — { totalOrders, totalBuyers, revenueByProvider, revenueByCurrency }
- *   topProducts — top 8 products by sales count with per-currency revenue breakdown
- *   recentOrders — last 5 orders (for a quick feed)
- *   dailySales   — order count per day for the last 30 days (sparkline data)
+ * Store performance overview. Lifetime counters preserve historical product
+ * activity, while the 30-day series is built from privacy-safe analytics
+ * events recorded after this release.
  */
 router.get('/stats', async (req, res, next) => {
   try {
+    const since30Days = new Date();
+    since30Days.setUTCDate(since30Days.getUTCDate() - 29);
+    since30Days.setUTCHours(0, 0, 0, 0);
+
     const [
       totalOrders,
       totalBuyers,
@@ -36,110 +39,222 @@ router.get('/stats', async (req, res, next) => {
       topProducts,
       recentOrders,
       dailySales,
+      totalVisitors,
+      visitors30Days,
+      totalPageViews,
+      totalPurchaseAttempts,
+      purchaseAttempts30Days,
+      dailyEvents,
+      dailyVisitors,
+      deliveryTotalsRows,
+      paidDownloadRows,
+      productPerformance,
     ] = await Promise.all([
-
-      // Total confirmed orders
       Order.countDocuments({ status: 'completed' }),
-
-      // Distinct buyers who have at least one completed order
       Order.distinct('buyer', { status: 'completed' }).then((ids) => ids.length),
 
-      // Revenue grouped by payment provider
       Order.aggregate([
         { $match: { status: 'completed' } },
-        {
-          $group: {
-            _id:          '$provider',
-            totalOrders:  { $sum: 1 },
-            // Sum of amounts — note: mixed currencies, so this is informational only
-            // The revenueByCurrency breakdown below is more accurate
-          },
-        },
+        { $group: { _id: '$provider', totalOrders: { $sum: 1 } } },
         { $sort: { totalOrders: -1 } },
       ]),
 
-      // Revenue grouped by currency (most useful for accounting)
       Order.aggregate([
         { $match: { status: 'completed' } },
         {
           $group: {
-            _id:      '$currency',
-            revenue:  { $sum: '$amountCharged' },
-            orders:   { $sum: 1 },
+            _id: '$currency',
+            revenue: { $sum: '$amountCharged' },
+            orders: { $sum: 1 },
           },
         },
         { $sort: { revenue: -1 } },
       ]),
 
-      // Top 8 products by sales count
       Order.aggregate([
         { $match: { status: 'completed' } },
         {
           $group: {
-            _id:        '$product',
+            _id: '$product',
             salesCount: { $sum: 1 },
-            // Build a currency→revenue map
-            revenues: {
-              $push: { currency: '$currency', amount: '$amountCharged' },
-            },
+            revenues: { $push: { currency: '$currency', amount: '$amountCharged' } },
           },
         },
         { $sort: { salesCount: -1 } },
         { $limit: 8 },
         {
           $lookup: {
-            from:         'products',
-            localField:   '_id',
+            from: 'products',
+            localField: '_id',
             foreignField: '_id',
-            as:           'product',
+            as: 'product',
           },
         },
         { $unwind: '$product' },
         {
           $project: {
             salesCount: 1,
-            revenues:   1,
-            'product._id':         1,
-            'product.title':       1,
+            revenues: 1,
+            'product.title': 1,
             'product.productType': 1,
-            'product.slug':        1,
           },
         },
       ]),
 
-      // 5 most recent orders
       Order.find({ status: 'completed' })
         .sort({ createdAt: -1 })
         .limit(5)
-        .populate('buyer',   'name email')
-        .populate('product', 'title productType'),
+        .populate('buyer', 'name email')
+        .populate('product', 'title productType')
+        .lean(),
 
-      // Daily order counts for the last 30 days
       Order.aggregate([
+        { $match: { status: 'completed', createdAt: { $gte: since30Days } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            orders: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+
+      AnalyticsEvent.distinct('visitorId', {
+        type: 'page_view',
+        visitorId: { $ne: null },
+      }).then((ids) => ids.length),
+
+      AnalyticsEvent.distinct('visitorId', {
+        type: 'page_view',
+        visitorId: { $ne: null },
+        createdAt: { $gte: since30Days },
+      }).then((ids) => ids.length),
+
+      AnalyticsEvent.countDocuments({ type: 'page_view' }),
+      AnalyticsEvent.countDocuments({ type: 'purchase_attempt' }),
+      AnalyticsEvent.countDocuments({
+        type: 'purchase_attempt',
+        createdAt: { $gte: since30Days },
+      }),
+
+      AnalyticsEvent.aggregate([
+        { $match: { createdAt: { $gte: since30Days } } },
+        {
+          $group: {
+            _id: {
+              day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              type: '$type',
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.day': 1 } },
+      ]),
+
+      AnalyticsEvent.aggregate([
         {
           $match: {
-            status:    'completed',
-            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 3600 * 1000) },
+            type: 'page_view',
+            visitorId: { $ne: null },
+            createdAt: { $gte: since30Days },
           },
         },
         {
           $group: {
             _id: {
-              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+              day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              visitorId: '$visitorId',
             },
-            orders:  { $sum: 1 },
-            revenue: { $sum: '$amountCharged' },
           },
         },
+        { $group: { _id: '$_id.day', visitors: { $sum: 1 } } },
         { $sort: { _id: 1 } },
       ]),
+
+      Product.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalStreams: { $sum: { $ifNull: ['$streamCount', 0] } },
+            freeDownloads: { $sum: { $ifNull: ['$freeDownloadCount', 0] } },
+          },
+        },
+      ]),
+
+      Order.aggregate([
+        { $match: { status: 'completed' } },
+        { $group: { _id: null, paidDownloads: { $sum: { $ifNull: ['$downloadCount', 0] } } } },
+      ]),
+
+      Product.find({ isPublished: true })
+        .select('title slug productType streamCount freeDownloadCount salesCount isFree')
+        .sort({ streamCount: -1, freeDownloadCount: -1, salesCount: -1 })
+        .limit(10)
+        .lean(),
     ]);
 
+    const deliveryTotals = deliveryTotalsRows[0] || { totalStreams: 0, freeDownloads: 0 };
+    const paidDownloads = paidDownloadRows[0]?.paidDownloads || 0;
+
+    const activityByDay = new Map();
+    for (let offset = 0; offset < 30; offset += 1) {
+      const day = new Date(since30Days);
+      day.setUTCDate(day.getUTCDate() + offset);
+      const key = day.toISOString().slice(0, 10);
+      activityByDay.set(key, {
+        date: key,
+        visitors: 0,
+        pageViews: 0,
+        downloads: 0,
+        streams: 0,
+        purchaseAttempts: 0,
+        completedPurchases: 0,
+      });
+    }
+
+    dailyVisitors.forEach((row) => {
+      const entry = activityByDay.get(row._id);
+      if (entry) entry.visitors = row.visitors;
+    });
+
+    const eventField = {
+      page_view: 'pageViews',
+      download: 'downloads',
+      stream: 'streams',
+      purchase_attempt: 'purchaseAttempts',
+    };
+    dailyEvents.forEach((row) => {
+      const entry = activityByDay.get(row._id.day);
+      const field = eventField[row._id.type];
+      if (entry && field) entry[field] = row.count;
+    });
+    dailySales.forEach((row) => {
+      const entry = activityByDay.get(row._id);
+      if (entry) entry.completedPurchases = row.orders;
+    });
+
     res.json({
-      summary: { totalOrders, totalBuyers, revenueByProvider, revenueByCurrency },
+      summary: {
+        totalOrders,
+        totalBuyers,
+        totalVisitors,
+        visitors30Days,
+        totalPageViews,
+        totalDownloads: deliveryTotals.freeDownloads + paidDownloads,
+        freeDownloads: deliveryTotals.freeDownloads,
+        paidDownloads,
+        totalStreams: deliveryTotals.totalStreams,
+        totalPurchaseAttempts,
+        purchaseAttempts30Days,
+        revenueByProvider,
+        revenueByCurrency,
+      },
+      activity: Array.from(activityByDay.values()),
       topProducts,
+      productPerformance,
       recentOrders,
       dailySales,
+      trackingNotice: 'Visitor and purchase-attempt trends begin from the analytics deployment date.',
     });
   } catch (err) {
     next(err);

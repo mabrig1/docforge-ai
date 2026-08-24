@@ -1,6 +1,7 @@
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import Navbar from '@/components/layout/Navbar';
+import AnalyticsTracker from '@/components/analytics/AnalyticsTracker';
 
 export const metadata = {
   title: 'DocForge Marketplace — Digital Books & Music',
@@ -12,6 +13,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <AuthProvider>
+          <AnalyticsTracker />
           <Navbar />
           {/* No outer padding — pages control their own layout */}
           <main>{children}</main>

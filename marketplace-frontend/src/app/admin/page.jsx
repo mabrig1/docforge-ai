@@ -54,9 +54,9 @@ export default function AdminPage() {
 // STATS TAB
 // ══════════════════════════════════════════════════════════════════════
 function StatsTab() {
-  const [data, setData]     = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     getAdminStats()
@@ -65,51 +65,149 @@ function StatsTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p className="text-gray-500 text-sm">Loading stats…</p>;
-  if (error)   return <p className="text-red-400 text-sm">{error}</p>;
-  if (!data)   return null;
+  if (loading) return <p className="text-gray-500 text-sm">Loading store analytics…</p>;
+  if (error) return <p className="text-red-400 text-sm">{error}</p>;
+  if (!data) return null;
 
-  const { summary, topProducts, recentOrders, dailySales } = data;
+  const {
+    summary,
+    activity = [],
+    topProducts = [],
+    productPerformance = [],
+    recentOrders = [],
+    trackingNotice,
+  } = data;
 
   return (
     <div className="space-y-8">
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Total Orders"  value={summary.totalOrders}  />
-        <KpiCard label="Total Buyers"  value={summary.totalBuyers}  />
-        {summary.revenueByCurrency.map((r) => (
-          <KpiCard key={r._id}
-            label={`Revenue (${r._id})`}
-            value={formatCurrency(r.revenue, r._id)}
-            sub={`${r.orders} orders`}
-          />
-        ))}
+      <div>
+        <h2 className="text-xl font-bold text-white">Store performance</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Lifetime totals with a rolling 30-day activity view.
+        </p>
       </div>
 
-      {/* Revenue by provider */}
-      <Section title="Orders by Provider">
-        <div className="flex gap-4 flex-wrap">
-          {summary.revenueByProvider.map((p) => (
-            <div key={p._id} className="card flex-1 min-w-[140px] text-center">
-              <p className="text-2xl font-bold text-white">{p.totalOrders}</p>
-              <p className="text-sm text-gray-400 capitalize mt-1">{p._id ?? 'unknown'}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <KpiCard
+          label="Unique visitors"
+          value={formatNumber(summary.totalVisitors)}
+          sub={`${formatNumber(summary.visitors30Days)} in the last 30 days · ${formatNumber(summary.totalPageViews)} page views`}
+          tone="blue"
+        />
+        <KpiCard
+          label="Downloads"
+          value={formatNumber(summary.totalDownloads)}
+          sub={`${formatNumber(summary.freeDownloads)} free · ${formatNumber(summary.paidDownloads)} purchased`}
+          tone="emerald"
+        />
+        <KpiCard
+          label="Streams"
+          value={formatNumber(summary.totalStreams)}
+          sub="Successful audio stream requests"
+          tone="violet"
+        />
+        <KpiCard
+          label="Attempted purchases"
+          value={formatNumber(summary.totalPurchaseAttempts)}
+          sub={`${formatNumber(summary.purchaseAttempts30Days)} in the last 30 days`}
+          tone="amber"
+        />
+        <KpiCard
+          label="Completed purchases"
+          value={formatNumber(summary.totalOrders)}
+          sub="Verified paid orders"
+          tone="brand"
+        />
+        <KpiCard
+          label="Customers"
+          value={formatNumber(summary.totalBuyers)}
+          sub="Unique completed-order buyers"
+          tone="slate"
+        />
+      </div>
 
-      {/* Daily sales sparkline (simple bar chart) */}
-      {dailySales.length > 0 && (
-        <Section title="Daily Sales — Last 30 Days">
-          <DailySalesChart data={dailySales} />
+      {activity.length > 0 && (
+        <Section title="Activity — Last 14 Days">
+          <ActivityChart data={activity} />
+          {trackingNotice && (
+            <p className="text-xs text-gray-600">{trackingNotice}</p>
+          )}
         </Section>
       )}
 
-      {/* Top products */}
-      {topProducts.length > 0 && (
-        <Section title="Top Products by Sales">
+      {summary.revenueByCurrency.length > 0 && (
+        <Section title="Revenue">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {summary.revenueByCurrency.map((r) => (
+              <KpiCard
+                key={r._id}
+                label={`Revenue (${r._id})`}
+                value={formatCurrency(r.revenue, r._id)}
+                sub={`${formatNumber(r.orders)} completed orders`}
+                tone="brand"
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {summary.revenueByProvider.length > 0 && (
+        <Section title="Completed purchases by provider">
+          <div className="flex gap-4 flex-wrap">
+            {summary.revenueByProvider.map((p) => (
+              <div key={p._id} className="card flex-1 min-w-[140px] text-center">
+                <p className="text-2xl font-bold text-white">{formatNumber(p.totalOrders)}</p>
+                <p className="text-sm text-gray-400 capitalize mt-1">{p._id ?? 'unknown'}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {productPerformance.length > 0 && (
+        <Section title="Product engagement">
           <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[620px]">
+              <thead className="bg-gray-800/60 text-gray-400 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-3 text-left">Product</th>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-right">Streams</th>
+                  <th className="px-4 py-3 text-right">Downloads</th>
+                  <th className="px-4 py-3 text-right">Sales</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {productPerformance.map((product) => (
+                  <tr key={product._id} className="hover:bg-gray-800/30">
+                    <td className="px-4 py-3 text-gray-100 font-medium max-w-[280px] truncate">
+                      {product.title}
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 capitalize">{product.productType}</td>
+                    <td className="px-4 py-3 text-right text-violet-300 font-semibold">
+                      {formatNumber(product.streamCount)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-emerald-300 font-semibold">
+                      {formatNumber(product.freeDownloadCount)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-brand-400 font-semibold">
+                      {formatNumber(product.salesCount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-600">
+            Product downloads show free-download activity; purchased downloads are included in the total above.
+          </p>
+        </Section>
+      )}
+
+      {topProducts.length > 0 && (
+        <Section title="Top products by completed purchases">
+          <div className="overflow-x-auto rounded-xl border border-gray-800">
+            <table className="w-full text-sm min-w-[600px]">
               <thead className="bg-gray-800/60 text-gray-400 text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-4 py-3 text-left">Product</th>
@@ -126,15 +224,17 @@ function StatsTab() {
                   }, {});
                   return (
                     <tr key={p._id} className="hover:bg-gray-800/30">
-                      <td className="px-4 py-3 text-gray-100 font-medium max-w-[200px] truncate">
+                      <td className="px-4 py-3 text-gray-100 font-medium max-w-[240px] truncate">
                         {p.product.title}
                       </td>
                       <td className="px-4 py-3 text-gray-400 capitalize">{p.product.productType}</td>
-                      <td className="px-4 py-3 text-right text-brand-400 font-bold">{p.salesCount}</td>
+                      <td className="px-4 py-3 text-right text-brand-400 font-bold">
+                        {formatNumber(p.salesCount)}
+                      </td>
                       <td className="px-4 py-3 text-right text-gray-300 text-xs">
-                        {Object.entries(revenueMap).map(([c, v]) =>
-                          formatCurrency(v, c)
-                        ).join(' · ')}
+                        {Object.entries(revenueMap)
+                          .map(([currency, value]) => formatCurrency(value, currency))
+                          .join(' · ')}
                       </td>
                     </tr>
                   );
@@ -145,21 +245,22 @@ function StatsTab() {
         </Section>
       )}
 
-      {/* Recent orders */}
       {recentOrders.length > 0 && (
-        <Section title="Recent Orders">
+        <Section title="Recent completed purchases">
           <div className="space-y-2">
-            {recentOrders.map((o) => (
-              <div key={o._id} className="card flex items-center justify-between gap-4 py-3">
+            {recentOrders.map((order) => (
+              <div key={order._id} className="card flex items-center justify-between gap-4 py-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-100 truncate">{o.product?.title}</p>
-                  <p className="text-xs text-gray-500">{o.buyer?.email}</p>
+                  <p className="text-sm font-medium text-gray-100 truncate">{order.product?.title}</p>
+                  <p className="text-xs text-gray-500">{order.buyer?.email}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-sm font-bold text-brand-400">
-                    {formatCurrency(o.amountCharged, o.currency)}
+                    {formatCurrency(order.amountCharged, order.currency)}
                   </p>
-                  <p className="text-xs text-gray-500">{new Date(o.createdAt).toLocaleDateString()}</p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(order.createdAt).toLocaleDateString()}
+                  </p>
                 </div>
               </div>
             ))}
@@ -170,40 +271,100 @@ function StatsTab() {
   );
 }
 
-function KpiCard({ label, value, sub }) {
+const KPI_TONES = {
+  blue: 'border-blue-500/30 bg-blue-500/5',
+  emerald: 'border-emerald-500/30 bg-emerald-500/5',
+  violet: 'border-violet-500/30 bg-violet-500/5',
+  amber: 'border-amber-500/30 bg-amber-500/5',
+  brand: 'border-brand-500/30 bg-brand-500/5',
+  slate: 'border-gray-700 bg-gray-900/70',
+};
+
+function KpiCard({ label, value, sub, tone = 'slate' }) {
   return (
-    <div className="card space-y-1">
-      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-extrabold text-white">{value}</p>
-      {sub && <p className="text-xs text-gray-500">{sub}</p>}
+    <div className={`card border ${KPI_TONES[tone] || KPI_TONES.slate} space-y-2`}>
+      <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className="text-3xl font-extrabold text-white">{value}</p>
+      {sub && <p className="text-xs text-gray-500 leading-relaxed">{sub}</p>}
     </div>
   );
 }
 
 function Section({ title, children }) {
   return (
-    <div className="space-y-3">
+    <section className="space-y-3">
       <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">{title}</h3>
       {children}
+    </section>
+  );
+}
+
+const ACTIVITY_SERIES = [
+  { key: 'visitors', label: 'Visitors', color: 'bg-blue-500' },
+  { key: 'downloads', label: 'Downloads', color: 'bg-emerald-500' },
+  { key: 'streams', label: 'Streams', color: 'bg-violet-500' },
+  { key: 'purchaseAttempts', label: 'Purchase attempts', color: 'bg-amber-500' },
+];
+
+function ActivityChart({ data }) {
+  const recent = data.slice(-14);
+  const maxValue = Math.max(
+    ...recent.flatMap((day) => ACTIVITY_SERIES.map((series) => day[series.key] || 0)),
+    1
+  );
+
+  return (
+    <div className="card overflow-x-auto">
+      <div className="min-w-[720px]">
+        <div className="flex flex-wrap gap-x-5 gap-y-2 mb-5">
+          {ACTIVITY_SERIES.map((series) => (
+            <div key={series.key} className="flex items-center gap-2 text-xs text-gray-400">
+              <span className={`h-2.5 w-2.5 rounded-sm ${series.color}`} />
+              {series.label}
+            </div>
+          ))}
+        </div>
+        <div
+          className="flex items-end gap-3 h-52 border-b border-gray-800 pb-1"
+          role="img"
+          aria-label="Visitors, downloads, streams, and purchase attempts for the last 14 days"
+        >
+          {recent.map((day) => (
+            <div key={day.date} className="flex-1 h-full flex flex-col justify-end">
+              <div className="flex-1 flex items-end justify-center gap-1">
+                {ACTIVITY_SERIES.map((series) => {
+                  const value = day[series.key] || 0;
+                  return (
+                    <div
+                      key={series.key}
+                      className={`w-2.5 rounded-t-sm ${series.color} opacity-85 hover:opacity-100 transition-opacity`}
+                      style={{ height: value ? `${Math.max((value / maxValue) * 100, 3)}%` : '0%' }}
+                      title={`${day.date} · ${series.label}: ${value}`}
+                    />
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-gray-600 text-center mt-2 whitespace-nowrap">
+                {formatChartDate(day.date)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function DailySalesChart({ data }) {
-  const maxOrders = Math.max(...data.map((d) => d.orders), 1);
-  return (
-    <div className="flex items-end gap-1 h-24 w-full">
-      {data.map((d) => (
-        <div key={d._id} className="flex-1 flex flex-col items-center gap-1 group">
-          <div
-            className="w-full bg-brand-700 group-hover:bg-brand-500 transition-colors rounded-sm"
-            style={{ height: `${(d.orders / maxOrders) * 100}%`, minHeight: '2px' }}
-            title={`${d._id}: ${d.orders} orders`}
-          />
-        </div>
-      ))}
-    </div>
-  );
+function formatNumber(value) {
+  return new Intl.NumberFormat().format(Number(value) || 0);
+}
+
+function formatChartDate(date) {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════
