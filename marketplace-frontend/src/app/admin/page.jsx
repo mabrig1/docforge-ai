@@ -9,6 +9,7 @@ import {
 } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import R2FileUploader from '@/components/ui/R2FileUploader';
+import ProductDescription from '@/components/storefront/ProductDescription';
 
 const TABS = ['Stats', 'Products', 'Orders', 'Users'];
 
@@ -346,6 +347,7 @@ function ProductFormModal({ initial, onClose, onSaved }) {
     price_gbp:       initial.pricing?.gbp   ?? '',
     price_eur:       initial.pricing?.eur   ?? '',
   });
+  const [showDescriptionPreview, setShowDescriptionPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
@@ -399,7 +401,21 @@ function ProductFormModal({ initial, onClose, onSaved }) {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field label="Title"><input className="input" name="title" value={form.title} onChange={handle} required /></Field>
-          <Field label="Description"><textarea className="input min-h-[80px]" name="description" value={form.description} onChange={handle} required /></Field>
+          <Field label="Description" hint="Keep paragraphs and song verses on separate lines. Headings can use ## and ###.">
+            <textarea className="input min-h-[220px] whitespace-pre-wrap leading-relaxed" name="description"
+              value={form.description} onChange={handle} required />
+            <div className="mt-2">
+              <button type="button" className="text-xs text-brand-400 hover:underline"
+                onClick={() => setShowDescriptionPreview((visible) => !visible)}>
+                {showDescriptionPreview ? 'Hide formatted preview' : 'Preview formatting'}
+              </button>
+              {showDescriptionPreview && (
+                <div className="mt-3 rounded-lg border border-gray-700 bg-gray-950 p-4 max-h-[360px] overflow-y-auto">
+                  <ProductDescription description={form.description} />
+                </div>
+              )}
+            </div>
+          </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Product Type">
               <select className="input" name="productType" value={form.productType} onChange={handle}>
