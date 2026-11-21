@@ -94,6 +94,18 @@ export async function getMe() {
   return data.user;
 }
 
+export async function requestPasswordReset(email) {
+  return request('/api/auth/forgot-password', {
+    method: 'POST', body: { email }, auth: false,
+  });
+}
+
+export async function resetAccountPassword(token, password) {
+  return request('/api/auth/reset-password', {
+    method: 'POST', body: { token, password }, auth: false,
+  });
+}
+
 // ── Products ───────────────────────────────────────────────────────────────
 export async function listProducts(type) {
   const qs = type ? `?type=${type}` : '';
