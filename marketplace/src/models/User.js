@@ -33,6 +33,11 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    tokenVersion: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
     // Soft-link to all orders placed by this user (populated on demand)
     // Not stored here — derived from Order.buyer
   },

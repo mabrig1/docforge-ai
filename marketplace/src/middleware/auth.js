@@ -44,9 +44,14 @@ async function protect(req, res, next) {
     return res.status(401).json({ error: 'Invalid or expired token.' });
   }
 
-  const user = await User.findById(payload.sub).select('+isActive');
+  const user = await User.findById(payload.sub).select('+isActive +tokenVersion');
   if (!user || !user.isActive) {
     return res.status(401).json({ error: 'Account not found or disabled.' });
+  }
+  // Any JWT minted before password recovery must no longer be accepted.
+  const tokenVersion = user.tokenVersion ?? 0;
+  if ((payload.tv ?? 0) !== tokenVersion) {
+    return res.status(401).json({ error: 'Session expired. Please log in again.' });
   }
 
   req.user = user;
@@ -69,7 +74,7 @@ function requireAdmin(req, res, next) {
  */
 function signToken(user) {
   return jwt.sign(
-    { sub: user._id, email: user.email, role: user.role },
+    { sub: user._id, email: user.email, role: user.role, tv: user.tokenVersion ?? 0 },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
