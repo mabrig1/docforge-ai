@@ -8,6 +8,7 @@ import { formatFileSize } from '@/lib/utils';
 import CheckoutSection from './CheckoutSection';
 import AudioPlayer from './AudioPlayer';
 import ShareButtons from '@/components/storefront/ShareButtons';
+import ProductDescription from '@/components/storefront/ProductDescription';
 
 export default function ProductDetailClient({ slug }) {
   const [product, setProduct] = useState(null);
@@ -83,7 +84,7 @@ export default function ProductDetailClient({ slug }) {
           )}
         </div>
 
-        <p className="text-gray-300 leading-relaxed">{product.description}</p>
+        <ProductDescription description={product.description} />
 
         <div className="flex flex-wrap gap-2 text-xs">
           {fileSizeBytes && (
