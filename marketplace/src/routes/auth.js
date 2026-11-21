@@ -100,7 +100,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     // Must explicitly select passwordHash because `select: false` is on the field
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash');
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash +tokenVersion');
     const valid = user && (await user.comparePassword(password));
     if (!valid) {
       // Identical message for both "not found" and "wrong password" to prevent
