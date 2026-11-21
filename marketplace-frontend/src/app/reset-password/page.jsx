@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { resetAccountPassword } from '@/lib/api';
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const params = useSearchParams();
   const [token] = useState(() => params.get('token') || '');
   const [password, setPassword] = useState('');
@@ -64,5 +64,12 @@ export default function ResetPasswordPage() {
       )}
       <p className="text-center text-sm"><Link href="/forgot-password" className="text-brand-400 hover:underline">Request another link</Link></p>
     </div>
+  );
+}
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<p className="text-center text-sm text-gray-400 pt-10">Loading recovery…</p>}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }
