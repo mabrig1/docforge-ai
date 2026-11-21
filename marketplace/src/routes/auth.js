@@ -171,7 +171,7 @@ router.post('/reset-password', resetLimiter, async (req, res, next) => {
       expiresAt: { $gt: new Date() },
     });
     if (!record) return res.status(400).json({ error: 'Reset link is invalid or expired. Request another.' });
-    const user = await User.findById(record.userId);
+    const user = await User.findById(record.userId).select('+tokenVersion');
     if (!user) return res.status(400).json({ error: 'Reset link is invalid or expired. Request another.' });
     user.passwordHash = password; // User's pre-save hook hashes with bcrypt.
     user.tokenVersion = (user.tokenVersion || 0) + 1; // Invalidate previously issued JWTs.
